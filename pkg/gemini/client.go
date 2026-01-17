@@ -9,14 +9,14 @@ import (
 	"google.golang.org/genai"
 )
 
-// Package-level sentinel errors for robust error handling.
+// 堅牢なエラーハンドリングのためのパッケージレベルのセンチネルエラー。
 var (
 	ErrEmptyPrompt        = errors.New("prompt cannot be empty")
 	ErrAPIKeyRequired     = errors.New("API key is required")
 	ErrInvalidTemperature = errors.New("temperature must be between 0.0 and 1.0")
 )
 
-// NewClient creates a new Gemini client based on the provided configuration.
+// NewClient は提供された設定に基づいて、新しい Gemini クライアントを作成します。
 func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 	if cfg.APIKey == "" {
 		return nil, ErrAPIKeyRequired
@@ -63,9 +63,9 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 	}, nil
 }
 
-// GenerateContent generates content from a pure text prompt.
-// This function applies default generation parameters such as TopP and CandidateCount.
-// For more detailed control over generation options, use GenerateWithParts.
+// GenerateContent は純粋なテキストプロンプトからコンテンツを生成します。
+// この関数では、TopP や CandidateCount などのデフォルトの生成パラメータが適用されます。
+// より詳細な生成オプションを指定する場合は、GenerateWithParts を使用してください。
 func (c *Client) GenerateContent(ctx context.Context, modelName string, prompt string) (*Response, error) {
 	if prompt == "" {
 		return nil, ErrEmptyPrompt
@@ -74,7 +74,7 @@ func (c *Client) GenerateContent(ctx context.Context, modelName string, prompt s
 	return c.GenerateWithParts(ctx, modelName, parts, GenerateOptions{})
 }
 
-// GenerateWithParts generates content by processing multimodal parts (text, images, etc.).
+// GenerateWithParts はテキストや画像などのマルチモーダルパーツを処理してコンテンツを生成します。
 func (c *Client) GenerateWithParts(ctx context.Context, modelName string, parts []*genai.Part, opts GenerateOptions) (*Response, error) {
 	contents := []*genai.Content{{Role: "user", Parts: parts}}
 
@@ -100,7 +100,7 @@ func (c *Client) GenerateWithParts(ctx context.Context, modelName string, parts 
 	return c.generate(ctx, modelName, contents, genConfig)
 }
 
-// generate encapsulates common API calling and retry logic.
+// generate は共通の API 呼び出しとリトライロジックをカプセル化します。
 func (c *Client) generate(ctx context.Context, modelName string, contents []*genai.Content, config *genai.GenerateContentConfig) (*Response, error) {
 	var finalResp *Response
 
