@@ -9,10 +9,13 @@ import (
 	"google.golang.org/genai"
 )
 
+// ErrEmptyPrompt はプロンプトが空の場合に返されるエラーなのだ。
+var ErrEmptyPrompt = errors.New("prompt cannot be empty")
+
 // NewClient は設定を基に新しい Gemini クライアントを生成する。
 func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 	if cfg.APIKey == "" {
-		return nil, fmt.Errorf("APIキーは必須です。設定を確認してください")
+		return nil, fmt.Errorf("API key is required")
 	}
 
 	clientConfig := &genai.ClientConfig{
@@ -22,13 +25,13 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 
 	client, err := genai.NewClient(ctx, clientConfig)
 	if err != nil {
-		return nil, fmt.Errorf("Geminiクライアントの作成に失敗しました: %w", err)
+		return nil, fmt.Errorf("failed to create gemini client: %w", err)
 	}
 
 	temp := DefaultTemperature
 	if cfg.Temperature != nil {
 		if *cfg.Temperature < 0.0 || *cfg.Temperature > 1.0 {
-			return nil, fmt.Errorf("温度設定は0.0から1.0の間である必要があります。入力値: %f", *cfg.Temperature)
+			return nil, fmt.Errorf("temperature must be between 0.0 and 1.0, got: %f", *cfg.Temperature)
 		}
 		temp = *cfg.Temperature
 	}
@@ -57,9 +60,11 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 }
 
 // GenerateContent は純粋なテキストプロンプトからコンテンツを生成する。
+// この関数は内部で GenerateWithParts を呼び出すため、TopP や CandidateCount などの
+// デフォルトの生成パラメータが共通して適用されます。
 func (c *Client) GenerateContent(ctx context.Context, modelName string, prompt string) (*Response, error) {
 	if prompt == "" {
-		return nil, errors.New("プロンプトが空です。入力を確認してください")
+		return nil, ErrEmptyPrompt
 	}
 	parts := []*genai.Part{{Text: prompt}}
 	return c.GenerateWithParts(ctx, modelName, parts, GenerateOptions{})
