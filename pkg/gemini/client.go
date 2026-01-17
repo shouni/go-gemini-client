@@ -41,11 +41,10 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 	}
 
 	retryCfg.InitialInterval = DefaultInitialDelay
+	retryCfg.MaxInterval = DefaultMaxDelay
 	if cfg.InitialDelay > 0 {
 		retryCfg.InitialInterval = cfg.InitialDelay
 	}
-
-	retryCfg.MaxInterval = DefaultMaxDelay
 	if cfg.MaxDelay > 0 {
 		retryCfg.MaxInterval = cfg.MaxDelay
 	}
@@ -57,10 +56,19 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 	}, nil
 }
 
+// GenerateContent は純粋なテキストプロンプトからコンテンツを生成する。
+func (c *Client) GenerateContent(ctx context.Context, modelName string, prompt string) (*Response, error) {
+	if prompt == "" {
+		return nil, errors.New("プロンプトが空です。入力を確認してください")
+	}
+	parts := []*genai.Part{{Text: prompt}}
+	return c.GenerateWithParts(ctx, modelName, parts, GenerateOptions{})
+}
+
 // GenerateWithParts はマルチモーダルパーツ（テキストや参照画像など）を処理してコンテンツを生成する。
 func (c *Client) GenerateWithParts(ctx context.Context, modelName string, parts []*genai.Part, opts GenerateOptions) (*Response, error) {
-	// --- AIへのリクエスト組み立て ---
 	contents := []*genai.Content{{Role: "user", Parts: parts}}
+
 	genConfig := &genai.GenerateContentConfig{
 		Temperature:    genai.Ptr(c.temperature),
 		TopP:           genai.Ptr(DefaultTopP),
@@ -68,55 +76,24 @@ func (c *Client) GenerateWithParts(ctx context.Context, modelName string, parts 
 		SafetySettings: opts.SafetySettings,
 	}
 
-	// シード値がある場合はキャストしてセットするのだ
 	if opts.Seed != nil {
 		genConfig.Seed = genai.Ptr(int32(*opts.Seed))
 	}
-
 	if opts.SystemPrompt != "" {
 		genConfig.SystemInstruction = &genai.Content{
 			Parts: []*genai.Part{{Text: opts.SystemPrompt}},
 		}
 	}
-
 	if opts.AspectRatio != "" {
 		genConfig.ImageConfig = &genai.ImageConfig{AspectRatio: opts.AspectRatio}
 	}
 
-	var finalResp *Response
-	op := func() error {
-		resp, err := c.client.Models.GenerateContent(ctx, modelName, contents, genConfig)
-		if err != nil {
-			return err
-		}
-		text, extractErr := extractTextFromResponse(resp)
-		if extractErr != nil {
-			return extractErr
-		}
-		finalResp = &Response{Text: text, RawResponse: resp}
-		return nil
-	}
-
-	// 指数バックオフ付きのリトライ実行なのだ
-	err := c.executeWithRetry(ctx, fmt.Sprintf("Gemini API call to %s", modelName), op, shouldRetry)
-	if err != nil {
-		return nil, err
-	}
-
-	return finalResp, nil
+	return c.generate(ctx, modelName, contents, genConfig)
 }
 
-// GenerateContent は純粋なテキストプロンプトからコンテンツを生成する。
-func (c *Client) GenerateContent(ctx context.Context, modelName string, finalPrompt string) (*Response, error) {
-	if finalPrompt == "" {
-		return nil, errors.New("プロンプトが空です。入力を確認してください")
-	}
-
+// generate は共通のAPI呼び出しとリサイクルロジックをカプセル化する。
+func (c *Client) generate(ctx context.Context, modelName string, contents []*genai.Content, config *genai.GenerateContentConfig) (*Response, error) {
 	var finalResp *Response
-	contents := promptToContents(finalPrompt)
-	config := &genai.GenerateContentConfig{
-		Temperature: genai.Ptr(c.temperature),
-	}
 
 	op := func() error {
 		resp, err := c.client.Models.GenerateContent(ctx, modelName, contents, config)
@@ -131,15 +108,10 @@ func (c *Client) GenerateContent(ctx context.Context, modelName string, finalPro
 		return nil
 	}
 
-	err := c.executeWithRetry(ctx, fmt.Sprintf("Gemini API call to %s", modelName), op, shouldRetry)
+	err := retry.Do(ctx, c.retryConfig, fmt.Sprintf("Gemini API call to %s", modelName), op, shouldRetry)
 	if err != nil {
 		return nil, err
 	}
 
 	return finalResp, nil
-}
-
-// executeWithRetry は指定された操作をリトライ設定に従って実行する。
-func (c *Client) executeWithRetry(ctx context.Context, operationName string, op func() error, shouldRetryFn func(error) bool) error {
-	return retry.Do(ctx, c.retryConfig, operationName, op, shouldRetryFn)
 }
