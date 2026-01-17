@@ -9,13 +9,17 @@ import (
 	"google.golang.org/genai"
 )
 
-// ErrEmptyPrompt はプロンプトが空の場合に返されるエラーなのだ。
-var ErrEmptyPrompt = errors.New("prompt cannot be empty")
+// Package-level sentinel errors for robust error handling.
+var (
+	ErrEmptyPrompt        = errors.New("prompt cannot be empty")
+	ErrAPIKeyRequired     = errors.New("API key is required")
+	ErrInvalidTemperature = errors.New("temperature must be between 0.0 and 1.0")
+)
 
-// NewClient は設定を基に新しい Gemini クライアントを生成する。
+// NewClient creates a new Gemini client based on the provided configuration.
 func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 	if cfg.APIKey == "" {
-		return nil, fmt.Errorf("API key is required")
+		return nil, ErrAPIKeyRequired
 	}
 
 	clientConfig := &genai.ClientConfig{
@@ -31,7 +35,7 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 	temp := DefaultTemperature
 	if cfg.Temperature != nil {
 		if *cfg.Temperature < 0.0 || *cfg.Temperature > 1.0 {
-			return nil, fmt.Errorf("temperature must be between 0.0 and 1.0, got: %f", *cfg.Temperature)
+			return nil, fmt.Errorf("%w, got: %f", ErrInvalidTemperature, *cfg.Temperature)
 		}
 		temp = *cfg.Temperature
 	}
@@ -59,9 +63,9 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 	}, nil
 }
 
-// GenerateContent は純粋なテキストプロンプトからコンテンツを生成する。
-// この関数は内部で GenerateWithParts を呼び出すため、TopP や CandidateCount などの
-// デフォルトの生成パラメータが共通して適用されます。
+// GenerateContent generates content from a pure text prompt.
+// This function applies default generation parameters such as TopP and CandidateCount.
+// For more detailed control over generation options, use GenerateWithParts.
 func (c *Client) GenerateContent(ctx context.Context, modelName string, prompt string) (*Response, error) {
 	if prompt == "" {
 		return nil, ErrEmptyPrompt
@@ -70,7 +74,7 @@ func (c *Client) GenerateContent(ctx context.Context, modelName string, prompt s
 	return c.GenerateWithParts(ctx, modelName, parts, GenerateOptions{})
 }
 
-// GenerateWithParts はマルチモーダルパーツ（テキストや参照画像など）を処理してコンテンツを生成する。
+// GenerateWithParts generates content by processing multimodal parts (text, images, etc.).
 func (c *Client) GenerateWithParts(ctx context.Context, modelName string, parts []*genai.Part, opts GenerateOptions) (*Response, error) {
 	contents := []*genai.Content{{Role: "user", Parts: parts}}
 
@@ -96,7 +100,7 @@ func (c *Client) GenerateWithParts(ctx context.Context, modelName string, parts 
 	return c.generate(ctx, modelName, contents, genConfig)
 }
 
-// generate は共通のAPI呼び出しとリサイクルロジックをカプセル化する。
+// generate encapsulates common API calling and retry logic.
 func (c *Client) generate(ctx context.Context, modelName string, contents []*genai.Content, config *genai.GenerateContentConfig) (*Response, error) {
 	var finalResp *Response
 
