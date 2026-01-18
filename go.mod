@@ -1,10 +1,9 @@
-module go-gemini-client
+module github.com/shouni/go-gemini-client
 
 go 1.25
 
 require (
 	github.com/shouni/go-utils v1.0.16
-	golang.org/x/sync v0.19.0
 	google.golang.org/genai v1.42.0
 	google.golang.org/grpc v1.78.0
 )
@@ -22,6 +21,7 @@ require (
 	go.opencensus.io v0.24.0 // indirect
 	golang.org/x/crypto v0.44.0 // indirect
 	golang.org/x/net v0.47.0 // indirect
+	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.38.0 // indirect
 	golang.org/x/text v0.31.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251029180050-ab9386a59fda // indirect
