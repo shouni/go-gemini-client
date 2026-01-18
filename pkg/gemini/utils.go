@@ -17,11 +17,6 @@ type APIResponseError struct {
 
 func (e *APIResponseError) Error() string { return e.msg }
 
-// promptToContents は文字列を SDK が受け取れる Content 構造に変換します。
-func promptToContents(text string) []*genai.Content {
-	return []*genai.Content{{Role: "user", Parts: []*genai.Part{{Text: text}}}}
-}
-
 // shouldRetry は発生したエラーがリトライで解決可能かどうかを判定するのだ。
 func shouldRetry(err error) bool {
 	// 規約違反（ブロック）などはリトライしても無駄なので即座に諦めるのだ
