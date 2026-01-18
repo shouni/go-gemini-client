@@ -11,9 +11,9 @@ import (
 
 // 堅牢なエラーハンドリングのためのパッケージレベルのセンチネルエラー。
 var (
-	ErrEmptyPrompt        = errors.New("prompt cannot be empty")
-	ErrAPIKeyRequired     = errors.New("API key is required")
-	ErrInvalidTemperature = errors.New("temperature must be between 0.0 and 1.0")
+	ErrEmptyPrompt        = errors.New("プロンプトを空にすることはできません")
+	ErrAPIKeyRequired     = errors.New("APIキーは必須です")
+	ErrInvalidTemperature = errors.New("温度設定（Temperature）は 0.0 から 1.0 の間である必要があります")
 )
 
 // NewClient は提供された設定に基づいて、新しい Gemini クライアントを作成します。
@@ -29,13 +29,13 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 
 	client, err := genai.NewClient(ctx, clientConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create gemini client: %w", err)
+		return nil, fmt.Errorf("Gemini クライアントの作成に失敗しました: %w", err)
 	}
 
 	temp := DefaultTemperature
 	if cfg.Temperature != nil {
 		if *cfg.Temperature < 0.0 || *cfg.Temperature > 1.0 {
-			return nil, fmt.Errorf("%w, got: %f", ErrInvalidTemperature, *cfg.Temperature)
+			return nil, fmt.Errorf("%w（入力値: %f）", ErrInvalidTemperature, *cfg.Temperature)
 		}
 		temp = *cfg.Temperature
 	}
@@ -117,7 +117,7 @@ func (c *Client) generate(ctx context.Context, modelName string, contents []*gen
 		return nil
 	}
 
-	err := retry.Do(ctx, c.retryConfig, fmt.Sprintf("Gemini API call to %s", modelName), op, shouldRetry)
+	err := retry.Do(ctx, c.retryConfig, fmt.Sprintf("Gemini API 呼び出し（モデル: %s）", modelName), op, shouldRetry)
 	if err != nil {
 		return nil, err
 	}
