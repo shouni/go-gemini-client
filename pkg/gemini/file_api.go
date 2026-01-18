@@ -28,7 +28,7 @@ func (c *Client) UploadFile(ctx context.Context, data []byte, mimeType, displayN
 	if err != nil {
 		// 失敗またはタイムアウトした場合は、リソースを非同期でクリーンアップする
 		c.asyncDelete(file.Name)
-		return "", "", err
+		return "", "", fmt.Errorf("failed to wait for file %q to become active: %w", file.Name, err)
 	}
 
 	return uri, file.Name, nil
@@ -65,7 +65,7 @@ func (c *Client) waitForFileActive(ctx context.Context, fileName string) (string
 		case <-ticker.C:
 			f, err := c.client.Files.Get(ctx, fileName, &genai.GetFileConfig{})
 			if err != nil {
-				return "", fmt.Errorf("failed to check file status: %w", err)
+				return "", fmt.Errorf("failed to check file status for %q: %w", fileName, err)
 			}
 
 			switch f.State {
