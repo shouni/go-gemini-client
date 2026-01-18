@@ -17,7 +17,7 @@ const (
 	DefaultTopP           float32 = 0.95
 	DefaultCandidateCount int32   = 1
 
-	// File API 転送の閾値（512KB）
+	// File API 転送の閾値
 	PollingInterval = 2 * time.Second
 	PollingTimeout  = 60 * time.Second
 )
