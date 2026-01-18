@@ -10,72 +10,28 @@ import (
 	"google.golang.org/genai"
 )
 
-// UploadFile はデータをアップロードし、Active状態になるまでポーリングするのだ。
-// 戻り値として、File APIでのURI、削除時に使用する名前、およびエラーを返すのだ。
+// UploadFile はデータをアップロードし、そのファイルが Active 状態（利用可能）になるまで待機します。
+// 戻り値として、File API での URI、管理用のファイル名、およびエラーを返します。
 func (c *Client) UploadFile(ctx context.Context, data []byte, mimeType, displayName string) (string, string, error) {
-	reader := bytes.NewReader(data)
 	uploadCfg := &genai.UploadFileConfig{
 		MIMEType:    mimeType,
 		DisplayName: displayName,
 	}
 
-	// 1. ファイルをアップロードするのだ
-	file, err := c.client.Files.Upload(ctx, reader, uploadCfg)
+	file, err := c.client.Files.Upload(ctx, bytes.NewReader(data), uploadCfg)
 	if err != nil {
-		return "", "", fmt.Errorf("file upload failed: %w", err)
+		return "", "", fmt.Errorf("Gemini File API へのアップロードに失敗しました: %w", err)
 	}
 
-	// 2. Active状態になるまでポーリング待機するのだ
-	ticker := time.NewTicker(PollingInterval)
-	defer ticker.Stop()
-
-	// 無限ループを防ぐためのタイムアウト設定なのだ
-	timeout := time.After(PollingTimeout)
-
-	for {
-		select {
-		case <-ctx.Done():
-			// 呼び出し元がキャンセルされた場合、後処理としてファイルの削除を試みる
-			go func(fileName string) {
-				cleanupCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-				defer cancel()
-				if _, err := c.client.Files.Delete(cleanupCtx, fileName, &genai.DeleteFileConfig{}); err != nil {
-					slog.WarnContext(context.Background(), "Async cleanup of File API failed", "name", fileName, "error", err)
-				}
-			}(file.Name)
-			return "", "", ctx.Err()
-
-		case <-timeout:
-			// タイムアウト発生時、ファイル名を含めた詳細なエラーを返しつつ、非同期で削除する
-			go func(fileName string) {
-				_, _ = c.client.Files.Delete(context.Background(), fileName, &genai.DeleteFileConfig{})
-			}(file.Name)
-			return "", "", fmt.Errorf("file processing for %q timed out after %v", file.Name, PollingTimeout)
-
-		case <-ticker.C:
-			// 現在の状態を取得するのだ
-			currentFile, err := c.client.Files.Get(ctx, file.Name, &genai.GetFileConfig{})
-			if err != nil {
-				return "", "", fmt.Errorf("failed to get status for %q: %w", file.Name, err)
-			}
-
-			switch currentFile.State {
-			case genai.FileStateActive:
-				// 利用可能になったのだ！
-				return currentFile.URI, currentFile.Name, nil
-			case genai.FileStateFailed:
-				// サーバー側で処理が失敗した場合
-				return "", "", fmt.Errorf("File API processing failed on server side for %q", file.Name)
-			case genai.FileStateProcessing:
-				// まだ処理中なので次のループへ行くのだ
-				slog.DebugContext(ctx, "File API processing...", "name", file.Name)
-				continue
-			default:
-				// 未定義の状態などの場合
-				slog.WarnContext(ctx, "Unknown file state received", "state", currentFile.State, "name", file.Name)
-			}
-		}
+	// Active 状態になるのを待機
+	uri, err := c.waitForFileActive(ctx, file.Name)
+	if err != nil {
+		// 失敗またはタイムアウトした場合は、リソースを非同期でクリーンアップする
+		c.asyncDelete(file.Name)
+		return "", "", fmt.Errorf("ファイル %q が有効状態になるまでの待機中にエラーが発生しました: %w", file.Name, err)
 	}
+
+	return uri, file.Name, nil
 }
 
 // DeleteFile は指定された名前のファイルを File API から削除します。
@@ -83,10 +39,57 @@ func (c *Client) DeleteFile(ctx context.Context, fileName string) error {
 	if fileName == "" {
 		return nil
 	}
-	_, err := c.client.Files.Delete(ctx, fileName, &genai.DeleteFileConfig{})
+	_, err := c.client.Files.Delete(ctx, fileName, nil)
 	if err != nil {
-		return fmt.Errorf("failed to delete file %q: %w", fileName, err)
+		return fmt.Errorf("ファイル %q の削除に失敗しました: %w", fileName, err)
 	}
-	slog.InfoContext(ctx, "File API object deleted", "name", fileName)
+	slog.InfoContext(ctx, "File API オブジェクトを削除しました", "name", fileName)
 	return nil
+}
+
+// waitForFileActive は指定されたファイルが利用可能になるまでポーリングします。
+func (c *Client) waitForFileActive(ctx context.Context, fileName string) (string, error) {
+	ticker := time.NewTicker(PollingInterval)
+	defer ticker.Stop()
+
+	timeout := time.After(PollingTimeout)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return "", fmt.Errorf("ファイル %q の待機中にコンテキストがキャンセルされました: %w", fileName, ctx.Err())
+
+		case <-timeout:
+			return "", fmt.Errorf("ファイル %q の処理が制限時間（%v）内に完了しませんでした", fileName, PollingTimeout)
+
+		case <-ticker.C:
+			f, err := c.client.Files.Get(ctx, fileName, &genai.GetFileConfig{})
+			if err != nil {
+				return "", fmt.Errorf("ファイル %q のステータス確認に失敗しました: %w", fileName, err)
+			}
+
+			switch f.State {
+			case genai.FileStateActive:
+				return f.URI, nil
+			case genai.FileStateFailed:
+				return "", fmt.Errorf("サーバー側でのファイル処理に失敗しました: %q", fileName)
+			case genai.FileStateProcessing:
+				slog.DebugContext(ctx, "Gemini File API で処理中...", "name", fileName)
+			default:
+				slog.WarnContext(ctx, "予期しないファイルステータスを受信しました", "state", f.State, "name", fileName)
+			}
+		}
+	}
+}
+
+// asyncDelete はエラー時などの後処理として、バックグラウンドでファイルを削除します。
+func (c *Client) asyncDelete(fileName string) {
+	go func() {
+		// メインの context がキャンセルされていても実行できるよう、新しい context を作成
+		ctx, cancel := context.WithTimeout(context.Background(), AsyncCleanupTimeout)
+		defer cancel()
+		if err := c.DeleteFile(ctx, fileName); err != nil {
+			slog.WarnContext(context.Background(), "バックグラウンドでのファイルクリーンアップに失敗しました", "name", fileName, "error", err)
+		}
+	}()
 }

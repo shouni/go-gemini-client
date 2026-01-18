@@ -17,9 +17,10 @@ const (
 	DefaultTopP           float32 = 0.95
 	DefaultCandidateCount int32   = 1
 
-	// File API 転送の閾値（512KB）
-	PollingInterval = 2 * time.Second
-	PollingTimeout  = 60 * time.Second
+	// File API
+	PollingInterval     = 2 * time.Second
+	PollingTimeout      = 60 * time.Second
+	AsyncCleanupTimeout = 15 * time.Second
 )
 
 // Config は初期化用の設定
