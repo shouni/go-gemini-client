@@ -39,7 +39,7 @@ func (c *Client) DeleteFile(ctx context.Context, fileName string) error {
 	if fileName == "" {
 		return nil
 	}
-	_, err := c.client.Files.Delete(ctx, fileName, &genai.DeleteFileConfig{})
+	_, err := c.client.Files.Delete(ctx, fileName, nil)
 	if err != nil {
 		return fmt.Errorf("failed to delete file %q: %w", fileName, err)
 	}
@@ -89,7 +89,7 @@ func (c *Client) asyncDelete(fileName string) {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		if err := c.DeleteFile(ctx, fileName); err != nil {
-			slog.Warn("Failed to cleanup file asynchronously", "name", fileName, "error", err)
+			slog.WarnContext(context.Background(), "Failed to cleanup file asynchronously", "name", fileName, "error", err)
 		}
 	}()
 }
