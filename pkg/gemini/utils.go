@@ -89,3 +89,12 @@ func extractTextFromResponse(resp *genai.GenerateContentResponse) (string, error
 
 	return "", nil
 }
+
+// seedToPtrInt32 は *int64 を SDK 用の *int32 に変換する
+func seedToPtrInt32(s *int64) *int32 {
+	if s == nil {
+		return nil
+	}
+	v := int32(*s)
+	return &v
+}

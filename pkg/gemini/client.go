@@ -86,7 +86,7 @@ func (c *Client) GenerateWithParts(ctx context.Context, modelName string, parts 
 	}
 
 	if opts.Seed != nil {
-		genConfig.Seed = genai.Ptr(int32(*opts.Seed))
+		genConfig.Seed = seedToPtrInt32(opts.Seed)
 	}
 	if opts.SystemPrompt != "" {
 		genConfig.SystemInstruction = &genai.Content{
