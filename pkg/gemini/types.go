@@ -9,6 +9,7 @@ import (
 )
 
 const (
+	DefaultMaxRetries     uint64  = 1
 	DefaultTemperature    float32 = 0.7
 	DefaultTopP           float32 = 0.95
 	DefaultCandidateCount int32   = 1
@@ -57,8 +58,7 @@ type Response struct {
 // 堅牢なエラーハンドリングのためのパッケージレベルのセンチネルエラー。
 var (
 	// 初期化時のエラー
-	ErrAPIKeyRequired       = errors.New("クライアントの初期化にはGemini APIキーが必要です")
-	ErrClientCreationFailed = errors.New("geminiクライアントの作成に失敗しました")
+	ErrAPIKeyRequired = errors.New("APIキーは必須です")
 
 	// 設定・バリデーションのエラー
 	ErrInvalidTemperature = errors.New("温度設定（Temperature）は 0.0 から 1.0 の間である必要があります")

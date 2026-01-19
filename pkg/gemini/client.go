@@ -21,7 +21,7 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 
 	client, err := genai.NewClient(ctx, clientCfg)
 	if err != nil {
-		return nil, ErrClientCreationFailed
+		return nil, fmt.Errorf("genaiクライアントの作成に失敗しました: %w", err)
 	}
 
 	// Temperature のバリデーションと設定

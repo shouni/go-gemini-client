@@ -68,10 +68,14 @@ func shouldRetry(err error) bool {
 // buildRetryConfig は設定から retry.Config を構築します。
 func buildRetryConfig(cfg Config) retry.Config {
 	retryCfg := retry.DefaultConfig()
-	// 設定値による上書き
+
+	// MaxRetriesが未設定の場合、このパッケージのデフォルト値を適用
 	if cfg.MaxRetries > 0 {
 		retryCfg.MaxRetries = cfg.MaxRetries
+	} else {
+		retryCfg.MaxRetries = DefaultMaxRetries
 	}
+
 	if cfg.InitialDelay > 0 {
 		retryCfg.InitialInterval = cfg.InitialDelay
 	}
