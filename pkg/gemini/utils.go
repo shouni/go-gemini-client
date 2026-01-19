@@ -9,6 +9,7 @@ import (
 	"math"
 	"net"
 
+	"github.com/shouni/go-utils/retry"
 	"google.golang.org/genai"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -62,6 +63,34 @@ func shouldRetry(err error) bool {
 	}
 
 	return false
+}
+
+// buildRetryConfig は設定から retry.Config を構築します。
+func buildRetryConfig(cfg Config) retry.Config {
+	retryCfg := retry.DefaultConfig()
+	// 設定値による上書き
+	if cfg.MaxRetries > 0 {
+		retryCfg.MaxRetries = cfg.MaxRetries
+	}
+	if cfg.InitialDelay > 0 {
+		retryCfg.InitialInterval = cfg.InitialDelay
+	}
+	if cfg.MaxDelay > 0 {
+		retryCfg.MaxInterval = cfg.MaxDelay
+	}
+
+	return retryCfg
+}
+
+// validateTemperature は Temperature の値を検証します
+func validateTemperature(input *float32) (float32, error) {
+	if input == nil {
+		return DefaultTemperature, nil
+	}
+	if *input < 0.0 || *input > 1.0 {
+		return 0, fmt.Errorf("%w（入力値: %f）", ErrInvalidTemperature, *input)
+	}
+	return *input, nil
 }
 
 // extractTextFromResponse はレスポンスからテキストを抽出し、異常な終了理由がないか確認します。
