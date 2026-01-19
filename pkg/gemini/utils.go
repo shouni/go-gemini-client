@@ -69,11 +69,14 @@ func shouldRetry(err error) bool {
 func buildRetryConfig(cfg Config) retry.Config {
 	retryCfg := retry.DefaultConfig()
 
+	// このパッケージ独自のデフォルト値を明示的に設定
+	retryCfg.MaxRetries = DefaultMaxRetries
+	retryCfg.InitialInterval = DefaultInitialDelay
+	retryCfg.MaxInterval = DefaultMaxDelay
+
 	// MaxRetriesが未設定の場合、このパッケージのデフォルト値を適用
 	if cfg.MaxRetries > 0 {
 		retryCfg.MaxRetries = cfg.MaxRetries
-	} else {
-		retryCfg.MaxRetries = DefaultMaxRetries
 	}
 
 	if cfg.InitialDelay > 0 {
@@ -92,7 +95,7 @@ func validateTemperature(input *float32) (float32, error) {
 		return DefaultTemperature, nil
 	}
 	if *input < 0.0 || *input > 1.0 {
-		return 0, fmt.Errorf("%w（入力値: %f）", ErrInvalidTemperature, *input)
+		return 0, fmt.Errorf("%w (入力値: %f)", ErrInvalidTemperature, *input)
 	}
 	return *input, nil
 }

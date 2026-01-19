@@ -9,7 +9,10 @@ import (
 )
 
 const (
-	DefaultMaxRetries     uint64  = 1
+	DefaultMaxRetries   uint64        = 1
+	DefaultInitialDelay time.Duration = 30 * time.Second  // この定数を復活させる
+	DefaultMaxDelay     time.Duration = 120 * time.Second // この定数を復活させる
+
 	DefaultTemperature    float32 = 0.7
 	DefaultTopP           float32 = 0.95
 	DefaultCandidateCount int32   = 1
