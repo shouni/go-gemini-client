@@ -2,18 +2,10 @@ package gemini
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/shouni/go-utils/retry"
 	"google.golang.org/genai"
-)
-
-// 堅牢なエラーハンドリングのためのパッケージレベルのセンチネルエラー。
-var (
-	ErrEmptyPrompt        = errors.New("プロンプトを空にすることはできません")
-	ErrAPIKeyRequired     = errors.New("APIキーは必須です")
-	ErrInvalidTemperature = errors.New("温度設定（Temperature）は 0.0 から 1.0 の間である必要があります")
 )
 
 // NewClient は提供された設定に基づいて、新しい Gemini クライアントを作成します。
@@ -22,44 +14,26 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 		return nil, ErrAPIKeyRequired
 	}
 
-	clientConfig := &genai.ClientConfig{
+	clientCfg := &genai.ClientConfig{
 		APIKey:  cfg.APIKey,
 		Backend: genai.BackendGeminiAPI,
 	}
 
-	client, err := genai.NewClient(ctx, clientConfig)
+	client, err := genai.NewClient(ctx, clientCfg)
 	if err != nil {
-		return nil, fmt.Errorf("Gemini クライアントの作成に失敗しました: %w", err)
+		return nil, fmt.Errorf("Geminiクライアントの作成に失敗しました: %w", err)
 	}
 
-	temp := DefaultTemperature
-	if cfg.Temperature != nil {
-		if *cfg.Temperature < 0.0 || *cfg.Temperature > 1.0 {
-			return nil, fmt.Errorf("%w（入力値: %f）", ErrInvalidTemperature, *cfg.Temperature)
-		}
-		temp = *cfg.Temperature
-	}
-
-	retryCfg := retry.DefaultConfig()
-	if cfg.MaxRetries > 0 {
-		retryCfg.MaxRetries = cfg.MaxRetries
-	} else {
-		retryCfg.MaxRetries = uint64(DefaultMaxRetries)
-	}
-
-	retryCfg.InitialInterval = DefaultInitialDelay
-	retryCfg.MaxInterval = DefaultMaxDelay
-	if cfg.InitialDelay > 0 {
-		retryCfg.InitialInterval = cfg.InitialDelay
-	}
-	if cfg.MaxDelay > 0 {
-		retryCfg.MaxInterval = cfg.MaxDelay
+	// Temperature のバリデーションと設定
+	temp, err := validateTemperature(cfg.Temperature)
+	if err != nil {
+		return nil, err
 	}
 
 	return &Client{
 		client:      client,
 		temperature: temp,
-		retryConfig: retryCfg,
+		retryConfig: buildRetryConfig(cfg),
 	}, nil
 }
 

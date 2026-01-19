@@ -1,7 +1,7 @@
 package gemini
 
 import (
-	"context"
+	"errors"
 	"time"
 
 	"github.com/shouni/go-utils/retry"
@@ -9,11 +9,11 @@ import (
 )
 
 const (
-	DefaultTemperature  float32 = 0.7
-	DefaultMaxRetries           = 1
-	DefaultInitialDelay         = 30 * time.Second
-	DefaultMaxDelay             = 120 * time.Second
+	DefaultMaxRetries   uint64        = 1
+	DefaultInitialDelay time.Duration = 30 * time.Second
+	DefaultMaxDelay     time.Duration = 120 * time.Second
 
+	DefaultTemperature    float32 = 0.7
 	DefaultTopP           float32 = 0.95
 	DefaultCandidateCount int32   = 1
 
@@ -26,7 +26,7 @@ const (
 // Config は初期化用の設定
 type Config struct {
 	APIKey       string
-	Temperature  *float32 // 0を許容するためポインタが安全
+	Temperature  *float32
 	MaxRetries   uint64
 	InitialDelay time.Duration
 	MaxDelay     time.Duration
@@ -35,8 +35,8 @@ type Config struct {
 // Client は Gemini SDK をラップしたメイン構造体
 type Client struct {
 	client      *genai.Client
-	temperature float32      // NewClient で確定させた値を保持
-	retryConfig retry.Config // 確定させたリトライ設定を保持
+	temperature float32
+	retryConfig retry.Config
 }
 
 // GenerateOptions は各生成リクエストごとのオプション
@@ -58,11 +58,12 @@ type Response struct {
 	RawResponse *genai.GenerateContentResponse
 }
 
-// GenerativeModel インターフェース
-// Client がこれを満たすように実装します
-type GenerativeModel interface {
-	GenerateContent(ctx context.Context, modelName string, prompt string) (*Response, error)
-	GenerateWithParts(ctx context.Context, modelName string, parts []*genai.Part, opts GenerateOptions) (*Response, error)
-	UploadFile(ctx context.Context, data []byte, mimeType, displayName string) (string, string, error)
-	DeleteFile(ctx context.Context, fileName string) error
-}
+// 堅牢なエラーハンドリングのためのパッケージレベルのセンチネルエラー。
+var (
+	// 初期化時のエラー
+	ErrAPIKeyRequired = errors.New("APIキーは必須です")
+
+	// 設定・バリデーションのエラー
+	ErrInvalidTemperature = errors.New("温度設定（Temperature）は 0.0 から 1.0 の間である必要があります")
+	ErrEmptyPrompt        = errors.New("プロンプトを空にすることはできません")
+)
