@@ -35,8 +35,8 @@ type Config struct {
 // Client は Gemini SDK をラップしたメイン構造体
 type Client struct {
 	client      *genai.Client
-	temperature float32      // NewClient で確定させた値を保持
-	retryConfig retry.Config // 確定させたリトライ設定を保持
+	temperature float32
+	retryConfig retry.Config
 }
 
 // GenerateOptions は各生成リクエストごとのオプション
