@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/shouni/go-utils/retry"
+	"github.com/shouni/netarmor/retry"
 	"google.golang.org/genai"
 )
 
