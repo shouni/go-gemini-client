@@ -9,7 +9,7 @@ import (
 	"math"
 	"net"
 
-	"github.com/shouni/go-utils/retry"
+	"github.com/shouni/netarmor/retry"
 	"google.golang.org/genai"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
