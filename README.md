@@ -5,9 +5,9 @@
 [![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/shouni/go-gemini-client)](https://github.com/shouni/go-gemini-client/tags)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## 🎯 概要: Gemini APIのクライアントライブラリ
+## 🎯 概要: Net Armor統合型 Geminiクライアントライブラリ
 
-`go-gemini-client` は、Google の **Gemini API (Google GenAI SDK)** を Go 言語からより安全かつ効率的に利用するためのラッパーライブラリです。特にマルチモーダル生成（画像生成・理解）におけるリソース管理と、エンタープライズ用途に耐えうる堅牢なエラーハンドリングに特化しています。
+**Go Gemini Client** は、[shouni/netarmor](https://github.com/shouni/netarmor) をコアに採用した、**Gemini API (Google GenAI SDK)** を 安全かつ効率的に利用するためのラッパーライブラリです。特にマルチモーダル生成（画像生成・理解）におけるリソース管理と、エンタープライズ用途に耐えうる堅牢なエラーハンドリングに特化しています。
 
 -----
 
@@ -92,6 +92,11 @@ client.DeleteFile(ctx, fileName)
 * `ErrEmptyPrompt`: プロンプトが空の場合。
 * `ErrAPIKeyRequired`: API キーが設定されていない場合。
 * `ErrInvalidTemperature`: 温度設定が範囲外の場合。
+
+## 🤝 依存関係 (Dependencies)
+
+* [shouni/gemini-image-kit](https://github.com/shouni/gemini-image-kit) - Gemini 画像作成コア
+* [shouni/netarmor](https://github.com/shouni/netarmor) - **ネットワークセキュリティ & リトライ戦略**
 
 ---
 
