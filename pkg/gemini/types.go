@@ -47,6 +47,7 @@ type GenerateOptions struct {
 	CandidateCount *int32
 	// 画像生成 (Nano Banana) 特有のパラメータ
 	AspectRatio    string
+	ImageSize      string
 	Seed           *int64
 	SafetySettings []*genai.SafetySetting
 }

@@ -67,8 +67,12 @@ func (c *Client) GenerateWithParts(ctx context.Context, modelName string, parts 
 			Parts: []*genai.Part{{Text: opts.SystemPrompt}},
 		}
 	}
-	if opts.AspectRatio != "" {
-		genConfig.ImageConfig = &genai.ImageConfig{AspectRatio: opts.AspectRatio}
+	// 画像生成 (Imagen/Nano Banana) 用の設定
+	if opts.AspectRatio != "" || opts.ImageSize != "" {
+		genConfig.ImageConfig = &genai.ImageConfig{
+			AspectRatio: opts.AspectRatio,
+			ImageSize:   opts.ImageSize,
+		}
 	}
 
 	return c.generate(ctx, modelName, contents, genConfig)
