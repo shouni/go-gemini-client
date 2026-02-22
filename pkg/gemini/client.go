@@ -2,6 +2,7 @@ package gemini
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/shouni/netarmor/retry"
@@ -14,12 +15,19 @@ import (
 func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 	clientCfg := &genai.ClientConfig{}
 
-	if cfg.ProjectID != "" && cfg.LocationID != "" {
+	isVertex := cfg.ProjectID != "" && cfg.LocationID != ""
+	isGemini := cfg.APIKey != ""
+
+	if isVertex && isGemini {
+		return nil, errors.New("ProjectID/LocationID と APIKey は排他的に設定してください")
+	}
+
+	if isVertex {
 		// Vertex AI モード: Cloud Run のサービスアカウント権限を利用
 		clientCfg.Project = cfg.ProjectID
 		clientCfg.Location = cfg.LocationID
 		clientCfg.Backend = genai.BackendVertexAI
-	} else if cfg.APIKey != "" {
+	} else if isGemini {
 		// Gemini API モード: API Key を利用
 		clientCfg.APIKey = cfg.APIKey
 		clientCfg.Backend = genai.BackendGeminiAPI
@@ -102,7 +110,7 @@ func (c *Client) generate(ctx context.Context, modelName string, contents []*gen
 		}
 
 		var images [][]byte
-		if len(resp.Candidates) > 0 && resp.Candidates[0].Content != nil {
+		if len(resp.Candidates) > 0 && resp.Candidates[0] != nil && resp.Candidates[0].Content != nil {
 			for _, part := range resp.Candidates[0].Content.Parts {
 				if part.InlineData != nil {
 					images = append(images, part.InlineData.Data)
