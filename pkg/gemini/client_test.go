@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"google.golang.org/genai"
 )
 
 func TestNewClient(t *testing.T) {
@@ -18,32 +20,49 @@ func TestNewClient(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name: "正常系：最小限の設定",
+			name: "正常系：Gemini API モード (API Key)",
 			cfg: Config{
 				APIKey: "dummy-key",
 			},
 			wantErr: nil,
 		},
 		{
-			name: "正常系：Temperatureの上限境界 (2.0)",
+			name: "正常系：Vertex AI モード (Project & Location)",
 			cfg: Config{
-				APIKey:      "dummy-key",
-				Temperature: ptrFloat(2.0),
+				ProjectID:  "my-project",
+				LocationID: "us-central1",
 			},
 			wantErr: nil,
 		},
 		{
-			name: "異常系：APIキーが空",
+			name: "正常系：Temperatureの設定確認",
 			cfg: Config{
-				APIKey: "",
+				APIKey:      "dummy-key",
+				Temperature: ptrFloat(0.5),
 			},
-			wantErr: ErrAPIKeyRequired,
+			wantErr: nil,
+		},
+		{
+			name: "異常系：設定が完全に空",
+			cfg: Config{
+				APIKey:     "",
+				ProjectID:  "",
+				LocationID: "",
+			},
+			wantErr: ErrConfigRequired,
+		},
+		{
+			name: "異常系：Vertex AI 設定が不完全 (Location欠損)",
+			cfg: Config{
+				ProjectID: "my-project",
+			},
+			wantErr: ErrConfigRequired, // APIKeyもないため
 		},
 		{
 			name: "異常系：Temperatureが範囲外 (2.1)",
 			cfg: Config{
 				APIKey:      "dummy-key",
-				Temperature: ptrFloat(2.1),
+				Temperature: ptrFloat(2.1), // 2.0までは許容されるため、2.1でエラーを確認
 			},
 			wantErr: ErrInvalidTemperature,
 		},
@@ -65,6 +84,16 @@ func TestNewClient(t *testing.T) {
 
 			if err != nil {
 				t.Fatalf("予期せぬエラーが発生しました: %v", err)
+			}
+
+			if tt.cfg.ProjectID != "" {
+				if client.backend != genai.BackendVertexAI {
+					t.Errorf("BackendがVertex AIになっていません: got %v", client.backend)
+				}
+			} else if tt.cfg.APIKey != "" {
+				if client.backend != genai.BackendGeminiAPI {
+					t.Errorf("BackendがGemini APIになっていません: got %v", client.backend)
+				}
 			}
 
 			// クライアント内部に正しく値がセットされているか確認

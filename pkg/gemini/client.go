@@ -9,14 +9,22 @@ import (
 )
 
 // NewClient は提供された設定に基づいて、新しい Gemini クライアントを作成します。
+// ProjectID と LocationID が設定されている場合は Vertex AI モード、
+// それ以外で APIKey がある場合は Gemini API モードで動作します。
 func NewClient(ctx context.Context, cfg Config) (*Client, error) {
-	if cfg.APIKey == "" {
-		return nil, ErrAPIKeyRequired
-	}
+	clientCfg := &genai.ClientConfig{}
 
-	clientCfg := &genai.ClientConfig{
-		APIKey:  cfg.APIKey,
-		Backend: genai.BackendGeminiAPI,
+	if cfg.ProjectID != "" && cfg.LocationID != "" {
+		// Vertex AI モード: Cloud Run のサービスアカウント権限を利用
+		clientCfg.Project = cfg.ProjectID
+		clientCfg.Location = cfg.LocationID
+		clientCfg.Backend = genai.BackendVertexAI
+	} else if cfg.APIKey != "" {
+		// Gemini API モード: API Key を利用
+		clientCfg.APIKey = cfg.APIKey
+		clientCfg.Backend = genai.BackendGeminiAPI
+	} else {
+		return nil, ErrConfigRequired
 	}
 
 	client, err := genai.NewClient(ctx, clientCfg)
@@ -34,12 +42,11 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 		client:      client,
 		temperature: temp,
 		retryConfig: buildRetryConfig(cfg),
+		backend:     clientCfg.Backend,
 	}, nil
 }
 
 // GenerateContent は純粋なテキストプロンプトからコンテンツを生成します。
-// この関数では、TopP や CandidateCount などのデフォルトの生成パラメータが適用されます。
-// より詳細な生成オプションを指定する場合は、GenerateWithParts を使用してください。
 func (c *Client) GenerateContent(ctx context.Context, modelName string, prompt string) (*Response, error) {
 	if prompt == "" {
 		return nil, ErrEmptyPrompt
@@ -48,7 +55,7 @@ func (c *Client) GenerateContent(ctx context.Context, modelName string, prompt s
 	return c.GenerateWithParts(ctx, modelName, parts, GenerateOptions{})
 }
 
-// GenerateWithParts はテキストや画像などのマルチモーダルパーツを処理してコンテンツを生成します。
+// GenerateWithParts はテキストや画像 (GCS URI含む) などのマルチモーダルパーツを処理してコンテンツを生成します。
 func (c *Client) GenerateWithParts(ctx context.Context, modelName string, parts []*genai.Part, opts GenerateOptions) (*Response, error) {
 	contents := []*genai.Content{{Role: "user", Parts: parts}}
 
@@ -87,11 +94,27 @@ func (c *Client) generate(ctx context.Context, modelName string, contents []*gen
 		if err != nil {
 			return err
 		}
+
+		// レスポンスからテキストと画像を抽出
 		text, extractErr := extractTextFromResponse(resp)
 		if extractErr != nil {
 			return extractErr
 		}
-		finalResp = &Response{Text: text, RawResponse: resp}
+
+		var images [][]byte
+		if len(resp.Candidates) > 0 && resp.Candidates[0].Content != nil {
+			for _, part := range resp.Candidates[0].Content.Parts {
+				if part.InlineData != nil {
+					images = append(images, part.InlineData.Data)
+				}
+			}
+		}
+
+		finalResp = &Response{
+			Text:        text,
+			Images:      images,
+			RawResponse: resp,
+		}
 		return nil
 	}
 
