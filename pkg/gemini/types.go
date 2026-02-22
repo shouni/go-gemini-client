@@ -67,7 +67,9 @@ type Response struct {
 // 堅牢なエラーハンドリングのためのパッケージレベルのセンチネルエラー。
 var (
 	// 初期化時のエラー
-	ErrConfigRequired = errors.New("APIKey または ProjectID/LocationID のいずれかが必須です")
+	ErrConfigRequired         = errors.New("APIKey または ProjectID/LocationID のいずれかが必須です")
+	ErrExclusiveConfig        = errors.New("ProjectID/LocationID と APIKey は排他的に設定してください")
+	ErrIncompleteVertexConfig = errors.New("Vertex AIを使用する場合、ProjectIDとLocationIDの両方を設定してください")
 
 	// 設定・バリデーションのエラー
 	ErrInvalidTemperature = errors.New("温度設定（Temperature）は 0.0 から 2.0 の間である必要があります")

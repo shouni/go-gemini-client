@@ -56,13 +56,22 @@ func TestNewClient(t *testing.T) {
 			cfg: Config{
 				ProjectID: "my-project",
 			},
-			wantErr: ErrConfigRequired, // APIKeyもないため
+			wantErr: ErrIncompleteVertexConfig, // 指摘通り、詳細なエラーを期待するように修正
+		},
+		{
+			name: "異常系：ProjectID と APIKey の両方が設定されている",
+			cfg: Config{
+				APIKey:     "dummy-key",
+				ProjectID:  "my-project",
+				LocationID: "asia-northeast1",
+			},
+			wantErr: ErrExclusiveConfig, // 排他制御のテスト
 		},
 		{
 			name: "異常系：Temperatureが範囲外 (2.1)",
 			cfg: Config{
 				APIKey:      "dummy-key",
-				Temperature: ptrFloat(2.1), // 2.0までは許容されるため、2.1でエラーを確認
+				Temperature: ptrFloat(2.1),
 			},
 			wantErr: ErrInvalidTemperature,
 		},
@@ -86,6 +95,7 @@ func TestNewClient(t *testing.T) {
 				t.Fatalf("予期せぬエラーが発生しました: %v", err)
 			}
 
+			// Backend 型のチェック
 			if tt.cfg.ProjectID != "" {
 				if client.backend != genai.BackendVertexAI {
 					t.Errorf("BackendがVertex AIになっていません: got %v", client.backend)
@@ -106,7 +116,6 @@ func TestNewClient(t *testing.T) {
 
 func TestGenerateContent_Validation(t *testing.T) {
 	ctx := context.Background()
-	// パニック回避のため、正規のコンストラクタで初期化
 	cfg := Config{APIKey: "dummy-key"}
 	c, err := NewClient(ctx, cfg)
 	if err != nil {

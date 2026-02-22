@@ -2,7 +2,6 @@ package gemini
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/shouni/netarmor/retry"
@@ -10,25 +9,32 @@ import (
 )
 
 // NewClient は提供された設定に基づいて、新しい Gemini クライアントを作成します。
-// ProjectID と LocationID が設定されている場合は Vertex AI モード、
-// それ以外で APIKey がある場合は Gemini API モードで動作します。
 func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 	clientCfg := &genai.ClientConfig{}
 
-	isVertex := cfg.ProjectID != "" && cfg.LocationID != ""
+	// 設定の有無を確認
+	hasVertex := cfg.ProjectID != "" || cfg.LocationID != ""
+	isVertexComplete := cfg.ProjectID != "" && cfg.LocationID != ""
 	isGemini := cfg.APIKey != ""
 
-	if isVertex && isGemini {
-		return nil, errors.New("ProjectID/LocationID と APIKey は排他的に設定してください")
+	// 1. 排他制御のチェック
+	if isVertexComplete && isGemini {
+		return nil, ErrExclusiveConfig
 	}
 
-	if isVertex {
-		// Vertex AI モード: Cloud Run のサービスアカウント権限を利用
+	// 2. 設定の完全性チェック
+	if hasVertex && !isVertexComplete {
+		return nil, ErrIncompleteVertexConfig
+	}
+
+	// 3. バックエンドの決定
+	if isVertexComplete {
+		// Vertex AI モード
 		clientCfg.Project = cfg.ProjectID
 		clientCfg.Location = cfg.LocationID
 		clientCfg.Backend = genai.BackendVertexAI
 	} else if isGemini {
-		// Gemini API モード: API Key を利用
+		// Gemini API モード
 		clientCfg.APIKey = cfg.APIKey
 		clientCfg.Backend = genai.BackendGeminiAPI
 	} else {
@@ -111,7 +117,10 @@ func (c *Client) generate(ctx context.Context, modelName string, contents []*gen
 
 		var images [][]byte
 		if len(resp.Candidates) > 0 && resp.Candidates[0] != nil && resp.Candidates[0].Content != nil {
-			for _, part := range resp.Candidates[0].Content.Parts {
+			parts := resp.Candidates[0].Content.Parts
+			// キャパシティを事前に確保してメモリアロケーションを最適化
+			images = make([][]byte, 0, len(parts))
+			for _, part := range parts {
 				if part.InlineData != nil {
 					images = append(images, part.InlineData.Data)
 				}
