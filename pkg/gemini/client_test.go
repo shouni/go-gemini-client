@@ -25,10 +25,10 @@ func TestNewClient(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name: "正常系：Temperatureの上限境界 (1.0)",
+			name: "正常系：Temperatureの上限境界 (2.0)",
 			cfg: Config{
 				APIKey:      "dummy-key",
-				Temperature: ptrFloat(1.0),
+				Temperature: ptrFloat(2.0),
 			},
 			wantErr: nil,
 		},
@@ -47,14 +47,6 @@ func TestNewClient(t *testing.T) {
 			},
 			wantErr: ErrInvalidTemperature,
 		},
-		{
-			name: "正常系：リトライ設定のカスタマイズ",
-			cfg: Config{
-				APIKey:     "dummy-key",
-				MaxRetries: 5,
-			},
-			wantErr: nil,
-		},
 	}
 
 	for _, tt := range tests {
@@ -63,16 +55,16 @@ func TestNewClient(t *testing.T) {
 
 			if tt.wantErr != nil {
 				if err == nil {
-					t.Fatal("エラーが返されるべきですが、nilが返されましたのだ")
+					t.Fatal("エラーが返されるべきですが、nilが返されました")
 				}
-				if !errors.Is(err, tt.wantErr) && err.Error() != tt.wantErr.Error() {
+				if !errors.Is(err, tt.wantErr) {
 					t.Errorf("期待したエラー: %v, 実際のエラー: %v", tt.wantErr, err)
 				}
 				return
 			}
 
 			if err != nil {
-				t.Fatalf("予期せぬエラーが発生したのだ: %v", err)
+				t.Fatalf("予期せぬエラーが発生しました: %v", err)
 			}
 
 			// クライアント内部に正しく値がセットされているか確認
@@ -84,9 +76,13 @@ func TestNewClient(t *testing.T) {
 }
 
 func TestGenerateContent_Validation(t *testing.T) {
-	// クライアントの初期化（モックなしでバリデーションのみテスト）
-	c := &Client{}
 	ctx := context.Background()
+	// パニック回避のため、正規のコンストラクタで初期化
+	cfg := Config{APIKey: "dummy-key"}
+	c, err := NewClient(ctx, cfg)
+	if err != nil {
+		t.Fatalf("クライアントの初期化に失敗しました: %v", err)
+	}
 
 	t.Run("空のプロンプト", func(t *testing.T) {
 		_, err := c.GenerateContent(ctx, "gemini-1.5-flash", "")

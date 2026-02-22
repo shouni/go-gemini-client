@@ -23,9 +23,9 @@ func TestValidateTemperature(t *testing.T) {
 		{"デフォルト値 (nil)", nil, DefaultTemperature, nil},
 		{"正常値 (0.5)", float32Ptr(0.5), 0.5, nil},
 		{"境界値 (0.0)", float32Ptr(0.0), 0.0, nil},
-		{"境界値 (1.0)", float32Ptr(1.0), 1.0, nil},
+		{"境界値 (2.0)", float32Ptr(2.0), 2.0, nil}, // 上限を 2.0 に修正
 		{"範囲外 (負数)", float32Ptr(-0.1), 0, ErrInvalidTemperature},
-		{"範囲外 (1.1)", float32Ptr(1.1), 0, ErrInvalidTemperature},
+		{"範囲外 (2.1)", float32Ptr(2.1), 0, ErrInvalidTemperature}, // 境界を 2.1 に修正
 	}
 
 	for _, tt := range tests {
@@ -35,8 +35,13 @@ func TestValidateTemperature(t *testing.T) {
 				if !errors.Is(err, tt.wantErr) {
 					t.Errorf("validateTemperature() error = %v, wantErr %v", err, tt.wantErr)
 				}
-			} else if got != tt.want {
-				t.Errorf("validateTemperature() = %v, want %v", got, tt.want)
+			} else {
+				if err != nil {
+					t.Fatalf("予期せぬエラーが発生しました: %v", err)
+				}
+				if got != tt.want {
+					t.Errorf("validateTemperature() = %v, want %v", got, tt.want)
+				}
 			}
 		})
 	}
@@ -45,7 +50,7 @@ func TestValidateTemperature(t *testing.T) {
 // --- buildRetryConfig のテスト ---
 func TestBuildRetryConfig(t *testing.T) {
 	t.Run("デフォルト値が適用されること", func(t *testing.T) {
-		cfg := Config{}
+		cfg := Config{} // 全て nil の状態
 		got := buildRetryConfig(cfg)
 		if got.MaxRetries != DefaultMaxRetries {
 			t.Errorf("MaxRetries = %v, want %v", got.MaxRetries, DefaultMaxRetries)
@@ -60,7 +65,7 @@ func TestBuildRetryConfig(t *testing.T) {
 		}
 		got := buildRetryConfig(cfg)
 		if got.MaxRetries != 5 || got.InitialInterval != 10*time.Second || got.MaxInterval != 60*time.Second {
-			t.Errorf("Config was not applied correctly: %+v", got)
+			t.Errorf("設定が正しく適用されていません: %+v", got)
 		}
 	})
 }
@@ -109,7 +114,7 @@ func TestSeedToPtrInt32(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := seedToPtrInt32(tt.input)
 			if (got == nil) != (tt.want == nil) {
-				t.Fatalf("seedToPtrInt32() = %v, want %v", got, tt.want)
+				t.Fatalf("seedToPtrInt32() の結果（nilかどうか）が一致しません: got %v, want %v", got, tt.want)
 			}
 			if got != nil && *got != *tt.want {
 				t.Errorf("seedToPtrInt32() = %v, want %v", *got, *tt.want)
