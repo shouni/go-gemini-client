@@ -18,7 +18,7 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 	isGemini := cfg.APIKey != ""
 
 	// 1. 排他制御のチェック
-	if isVertexComplete && isGemini {
+	if hasVertex && isGemini {
 		return nil, ErrExclusiveConfig
 	}
 
@@ -118,8 +118,6 @@ func (c *Client) generate(ctx context.Context, modelName string, contents []*gen
 		var images [][]byte
 		if len(resp.Candidates) > 0 && resp.Candidates[0] != nil && resp.Candidates[0].Content != nil {
 			parts := resp.Candidates[0].Content.Parts
-			// キャパシティを事前に確保してメモリアロケーションを最適化
-			images = make([][]byte, 0, len(parts))
 			for _, part := range parts {
 				if part.InlineData != nil {
 					images = append(images, part.InlineData.Data)
