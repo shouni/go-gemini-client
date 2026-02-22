@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"google.golang.org/genai"
 )
 
 func TestNewClient(t *testing.T) {
@@ -18,26 +20,52 @@ func TestNewClient(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name: "正常系：最小限の設定",
+			name: "正常系：Gemini API モード (API Key)",
 			cfg: Config{
 				APIKey: "dummy-key",
 			},
 			wantErr: nil,
 		},
 		{
-			name: "正常系：Temperatureの上限境界 (2.0)",
+			name: "正常系：Vertex AI モード (Project & Location)",
 			cfg: Config{
-				APIKey:      "dummy-key",
-				Temperature: ptrFloat(2.0),
+				ProjectID:  "my-project",
+				LocationID: "us-central1",
 			},
 			wantErr: nil,
 		},
 		{
-			name: "異常系：APIキーが空",
+			name: "正常系：Temperatureの設定確認",
 			cfg: Config{
-				APIKey: "",
+				APIKey:      "dummy-key",
+				Temperature: ptrFloat(0.5),
 			},
-			wantErr: ErrAPIKeyRequired,
+			wantErr: nil,
+		},
+		{
+			name: "異常系：設定が完全に空",
+			cfg: Config{
+				APIKey:     "",
+				ProjectID:  "",
+				LocationID: "",
+			},
+			wantErr: ErrConfigRequired,
+		},
+		{
+			name: "異常系：Vertex AI 設定が不完全 (Location欠損)",
+			cfg: Config{
+				ProjectID: "my-project",
+			},
+			wantErr: ErrIncompleteVertexConfig, // 指摘通り、詳細なエラーを期待するように修正
+		},
+		{
+			name: "異常系：ProjectID と APIKey の両方が設定されている",
+			cfg: Config{
+				APIKey:     "dummy-key",
+				ProjectID:  "my-project",
+				LocationID: "asia-northeast1",
+			},
+			wantErr: ErrExclusiveConfig, // 排他制御のテスト
 		},
 		{
 			name: "異常系：Temperatureが範囲外 (2.1)",
@@ -67,6 +95,17 @@ func TestNewClient(t *testing.T) {
 				t.Fatalf("予期せぬエラーが発生しました: %v", err)
 			}
 
+			// Backend 型のチェック
+			if tt.cfg.ProjectID != "" {
+				if client.backend != genai.BackendVertexAI {
+					t.Errorf("BackendがVertex AIになっていません: got %v", client.backend)
+				}
+			} else if tt.cfg.APIKey != "" {
+				if client.backend != genai.BackendGeminiAPI {
+					t.Errorf("BackendがGemini APIになっていません: got %v", client.backend)
+				}
+			}
+
 			// クライアント内部に正しく値がセットされているか確認
 			if tt.cfg.Temperature != nil && client.temperature != *tt.cfg.Temperature {
 				t.Errorf("Temperatureが一致しません: got %v, want %v", client.temperature, *tt.cfg.Temperature)
@@ -77,7 +116,6 @@ func TestNewClient(t *testing.T) {
 
 func TestGenerateContent_Validation(t *testing.T) {
 	ctx := context.Background()
-	// パニック回避のため、正規のコンストラクタで初期化
 	cfg := Config{APIKey: "dummy-key"}
 	c, err := NewClient(ctx, cfg)
 	if err != nil {

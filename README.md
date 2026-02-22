@@ -5,29 +5,31 @@
 [![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/shouni/go-gemini-client)](https://github.com/shouni/go-gemini-client/tags)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## 🎯 概要: Net Armor統合型 Geminiクライアントライブラリ
+## 🎯 概要: Net Armor 統合型ハイブリッド Gemini クライアント
 
-**Go Gemini Client** は、[shouni/netarmor](https://github.com/shouni/netarmor) をコアに採用した、**Gemini API (Google GenAI SDK)** を 安全かつ効率的に利用するためのGeminiクライアントライブラリです。
+**Go Gemini Client** は、[shouni/netarmor](https://github.com/shouni/netarmor) をコアに採用した、**Google Gemini (Google AI & Vertex AI)** を安全かつ効率的に利用するためのライブラリです。
 
-特にマルチモーダル生成（画像生成・理解）におけるリソース管理と、エンタープライズ用途に耐えうる堅牢なエラーハンドリングに特化しています。
+ひとつのインターフェースで、軽量な **Gemini API (Google AI Studio)** と、エンタープライズ向けの **Vertex AI (Google Cloud)** を切り替えて利用可能。特に GCS (Google Cloud Storage) とのシームレスな連携に最適化されています。
 
------
+---
 
 ## 💎 特徴と設計思想
 
-### 🛡️ 安定した画像生成パイプライン
+### 🤖 ハイブリッド・バックエンド・サポート
 
-Gemini API を利用した画像生成において、参照画像の一貫性を保つための **File API ライフサイクル管理** をネイティブにサポートします。
+* **Dual Backend**: `APIKey` 方式（Google AI）と `ProjectID/LocationID` 方式（Vertex AI）の両方に対応。
+* **Vertex AI 連携**: Cloud Run 等の環境で IAM 権限を利用した認証に対応。API Key の管理が不要になり、よりセキュアな運用が可能です。
 
-### 🤖 堅牢な AI クライアント (`pkg/gemini`)
+### 🛡️ 堅牢な AI クライアント (`pkg/gemini`)
 
 * **高度なリトライ戦略**: 指数バックオフによる自動復旧。セーフティフィルタによるブロックなど、リトライすべきでないエラーを識別して即時停止するインテリジェントなロジックを搭載。
 * **決定論的な制御**: シード値 (`Seed`) の管理により、生成 AI 特有の揺らぎを制御し、再現性のある出力をサポート。
-* **型安全なエラー判定**: センチネルエラーの導入により、`errors.Is` を用いた正確なエラーハンドリングが可能です。
+* **型安全なエラー判定**: `errors.Is` を用いた正確なエラーハンドリングが可能です。
 
 ### 📁 高度なリソース管理
 
-* **File API サポート**: 巨大なメディアデータを事前にアップロードし、`Active` 状態になるまで自動ポーリング。生成された URI を複数のリクエストで効率的に再利用できます。
+* **GCS 直接参照 (Vertex AI)**: Vertex AI モードでは、`gs://` 形式の URI を直接プロンプトに含めることができ、事前のアップロードや待機ループが不要になります。
+* **File API サポート (Gemini API)**: メディアデータのアップロードと `Active` 状態までの自動ポーリングをサポート。
 
 ---
 
@@ -35,33 +37,43 @@ Gemini API を利用した画像生成において、参照画像の一貫性を
 
 ### クライアントの初期化
 
+#### 1. Vertex AI モード (推奨: Cloud Run / GCS 連携)
+
 ```go
 ctx := context.Background()
 client, err := gemini.NewClient(ctx, gemini.Config{
-    APIKey:      "YOUR_GEMINI_API_KEY",
+    ProjectID:  "your-google-cloud-project-id",
+    LocationID: "asia-northeast1",
     Temperature: genai.Ptr(0.7),
-    MaxRetries:  3,
 })
 
 ```
 
-### 画像リファレンスを使用した生成 (File API)
+#### 2. Gemini API モード (API Key 方式)
 
 ```go
-// 1. 画像を File API にアップロード
-uri, fileName, err := client.UploadFile(ctx, imageBytes, "image/png", "character-design")
-
-// 2. アップロードした URI を使用して生成
-parts := []*genai.Part{
-    {Text: "このキャラクターのデザインを維持したまま、別のポーズを生成して"},
-    {FileData: &genai.FileData{FileURI: uri}},
-}
-resp, err := client.GenerateWithParts(ctx, "imagen-3.0-generate-001", parts, gemini.GenerateOptions{
-    AspectRatio: "16:9",
+client, err := gemini.NewClient(ctx, gemini.Config{
+    APIKey: "YOUR_GEMINI_API_KEY",
 })
 
-// 3. 最後にリソースをクリーンアップ
-client.DeleteFile(ctx, fileName)
+```
+
+### マルチモーダル生成 (GCS URI 直接使用)
+
+Vertex AI モードを利用すると、GCS 上の画像をダウンロードすることなく直接解析できます。
+
+```go
+parts := []*genai.Part{
+    {
+        FileData: &genai.FileData{
+            URI:      "gs://my-bucket/character-design.jpg",
+            MIMEType: "image/jpeg",
+        },
+    },
+    {Text: "この画像に基づいて漫画の台本を作成してください"},
+}
+
+resp, err := client.GenerateWithParts(ctx, "gemini-3-pro-image-preview", parts, gemini.GenerateOptions{})
 
 ```
 
@@ -71,7 +83,9 @@ client.DeleteFile(ctx, fileName)
 
 | 設定項目 | 役割 | デフォルト値 |
 | --- | --- | --- |
-| **`APIKey`** | Gemini API キー (必須) | - |
+| **`APIKey`** | Gemini API キー (Google AI モード用) | - |
+| **`ProjectID`** | Google Cloud プロジェクト ID (Vertex AI モード用) | - |
+| **`LocationID`** | リージョン名 (Vertex AI モード用) | - |
 | **`Temperature`** | 応答の創造性 (0.0 - 2.0) | `0.7` |
 | **`MaxRetries`** | 最大リトライ回数 | `1` |
 | **`InitialDelay`** | リトライ開始時の待機時間 | `30s` |
@@ -83,7 +97,7 @@ client.DeleteFile(ctx, fileName)
 
 | ディレクトリ | 役割 |
 | --- | --- |
-| `pkg/gemini` | **コア・クライアント**: 通信、リトライ、File API 管理、パラメータ制御。 |
+| `pkg/gemini` | **コア・クライアント**: 通信、リトライ、マルチモーダル制御、Backend 切り替え。 |
 
 ---
 
@@ -91,9 +105,11 @@ client.DeleteFile(ctx, fileName)
 
 本ライブラリでは、以下のセンチネルエラーをエクスポートしています。
 
+* `ErrConfigRequired`: APIKey または ProjectID/LocationID のいずれも設定されていない場合。
 * `ErrEmptyPrompt`: プロンプトが空の場合。
-* `ErrAPIKeyRequired`: API キーが設定されていない場合。
-* `ErrInvalidTemperature`: 温度設定が範囲外の場合。
+* `ErrInvalidTemperature`: 温度設定が範囲外 (0.0 - 2.0) の場合。
+
+---
 
 ## 🤝 依存関係 (Dependencies)
 
