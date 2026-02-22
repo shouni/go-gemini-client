@@ -72,7 +72,7 @@ client.DeleteFile(ctx, fileName)
 | 設定項目 | 役割 | デフォルト値 |
 | --- | --- | --- |
 | **`APIKey`** | Gemini API キー (必須) | - |
-| **`Temperature`** | 応答の創造性 (0.0 - 1.0) | `0.7` |
+| **`Temperature`** | 応答の創造性 (0.0 - 2.0) | `0.7` |
 | **`MaxRetries`** | 最大リトライ回数 | `1` |
 | **`InitialDelay`** | リトライ開始時の待機時間 | `30s` |
 | **`MaxDelay`** | リトライ待機時間の上限 | `120s` |
@@ -97,7 +97,7 @@ client.DeleteFile(ctx, fileName)
 
 ## 🤝 依存関係 (Dependencies)
 
-* [shouni/gemini-image-kit](https://github.com/shouni/gemini-image-kit) - Gemini 画像作成コア
+* [google.golang.org/genai](https://pkg.go.dev/google.golang.org/genai) - Google Gemini 公式 SDK
 * [shouni/netarmor](https://github.com/shouni/netarmor) - **ネットワークセキュリティ & リトライ戦略**
 
 ---

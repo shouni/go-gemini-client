@@ -95,7 +95,7 @@ func validateTemperature(input *float32) (float32, error) {
 	if input == nil {
 		return DefaultTemperature, nil
 	}
-	if *input < 0.0 || *input > 1.0 {
+	if *input < 0.0 || *input > 2.0 {
 		return 0, fmt.Errorf("%w (入力値: %f)", ErrInvalidTemperature, *input)
 	}
 	return *input, nil
