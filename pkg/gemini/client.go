@@ -12,28 +12,23 @@ import (
 func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 	clientCfg := &genai.ClientConfig{}
 
-	// 設定の有無を確認
-	hasVertex := cfg.ProjectID != "" || cfg.LocationID != ""
-	isVertexComplete := cfg.ProjectID != "" && cfg.LocationID != ""
-	isGemini := cfg.APIKey != ""
-
-	// 1. 排他制御のチェック
-	if hasVertex && isGemini {
+	// 1. 排他制御
+	if cfg.IsVertexAI() && cfg.IsGeminiAPI() {
 		return nil, ErrExclusiveConfig
 	}
 
-	// 2. 設定の完全性チェック
-	if hasVertex && !isVertexComplete {
+	// 2. 完全性チェック
+	if cfg.IsIncompleteVertex() {
 		return nil, ErrIncompleteVertexConfig
 	}
 
 	// 3. バックエンドの決定
-	if isVertexComplete {
+	if cfg.IsIncompleteVertex() {
 		// Vertex AI モード
 		clientCfg.Project = cfg.ProjectID
 		clientCfg.Location = cfg.LocationID
 		clientCfg.Backend = genai.BackendVertexAI
-	} else if isGemini {
+	} else if cfg.IsGeminiAPI() {
 		// Gemini API モード
 		clientCfg.APIKey = cfg.APIKey
 		clientCfg.Backend = genai.BackendGeminiAPI
