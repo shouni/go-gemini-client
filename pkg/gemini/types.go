@@ -75,3 +75,19 @@ var (
 	ErrInvalidTemperature = errors.New("温度設定（Temperature）は 0.0 から 2.0 の間である必要があります")
 	ErrEmptyPrompt        = errors.New("プロンプトを空にすることはできません")
 )
+
+// IsVertexAI ProjectIDおよびLocationIDのセットを確認し、Vertex AIの設定が有効であるかをチェックします。
+func (c Config) IsVertexAI() bool {
+	return c.ProjectID != "" && c.LocationID != ""
+}
+
+// IsGeminiAPI APIKeyの有無を検証し、Gemini APIを利用するための設定が有効であるかを確認します。
+func (c Config) IsGeminiAPI() bool {
+	return c.APIKey != ""
+}
+
+// IsIncompleteVertex ProjectIDまたはLocationIDの有無を確認し、Vertex AIの設定漏れがないかを検証します。
+func (c Config) IsIncompleteVertex() bool {
+	hasAny := c.ProjectID != "" || c.LocationID != ""
+	return hasAny && !c.IsVertexAI()
+}
