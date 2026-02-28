@@ -12,29 +12,35 @@ import (
 func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 	clientCfg := &genai.ClientConfig{}
 
-	if cfg.IsVertexAI() && cfg.IsGeminiAPI() {
+	// 1. 排他制御 (Conflict Check)
+	// Vertex AIの設定が一部でも存在し、かつAPIKeyもある場合は排他エラーを優先
+	hasAnyVertex := cfg.ProjectID != "" || cfg.LocationID != ""
+	if hasAnyVertex && cfg.IsGeminiAPI() {
 		return nil, ErrExclusiveConfig
 	}
 
+	// 2. 完全性チェック (Incomplete Vertex Check)
+	// 片方だけ設定されている中途半端な状態を検知
 	if cfg.IsIncompleteVertex() {
 		return nil, ErrIncompleteVertexConfig
 	}
 
-	if !cfg.IsVertexAI() && !cfg.IsGeminiAPI() {
-		return nil, ErrConfigRequired
-	}
-
+	// 3. バックエンドの決定と必須チェック
 	if cfg.IsVertexAI() {
+		// Vertex AI モード
 		clientCfg.Project = cfg.ProjectID
 		clientCfg.Location = cfg.LocationID
 		clientCfg.Backend = genai.BackendVertexAI
 	} else if cfg.IsGeminiAPI() {
+		// Gemini API モード
 		clientCfg.APIKey = cfg.APIKey
 		clientCfg.Backend = genai.BackendGeminiAPI
 	} else {
+		// どちらの条件も満たさない場合は必須エラー
 		return nil, ErrConfigRequired
 	}
 
+	// クライアントの初期化
 	client, err := genai.NewClient(ctx, clientCfg)
 	if err != nil {
 		return nil, fmt.Errorf("Geminiクライアントの作成に失敗しました: %w", err)
