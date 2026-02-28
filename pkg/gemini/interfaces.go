@@ -13,4 +13,5 @@ type GenerativeModel interface {
 	GenerateWithParts(ctx context.Context, modelName string, parts []*genai.Part, opts GenerateOptions) (*Response, error)
 	UploadFile(ctx context.Context, data []byte, mimeType, displayName string) (string, string, error)
 	DeleteFile(ctx context.Context, fileName string) error
+	IsVertexAI() bool
 }
