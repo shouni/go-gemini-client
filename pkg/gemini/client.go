@@ -14,8 +14,7 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 
 	// 1. 排他制御 (Conflict Check)
 	// Vertex AIの設定が一部でも存在し、かつAPIKeyもある場合は排他エラーを優先
-	hasAnyVertex := cfg.ProjectID != "" || cfg.LocationID != ""
-	if hasAnyVertex && cfg.IsGeminiAPI() {
+	if (cfg.IsVertexAI() || cfg.IsIncompleteVertex()) && cfg.IsGeminiAPI() {
 		return nil, ErrExclusiveConfig
 	}
 
