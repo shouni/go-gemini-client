@@ -59,6 +59,11 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 	}, nil
 }
 
+// IsVertexAI は、このクライアントが Vertex AI バックエンドを使用しているかを確認します。
+func (c *Client) IsVertexAI() bool {
+	return c.backend == genai.BackendVertexAI
+}
+
 // GenerateContent は純粋なテキストプロンプトからコンテンツを生成します。
 func (c *Client) GenerateContent(ctx context.Context, modelName string, prompt string) (*Response, error) {
 	if prompt == "" {
