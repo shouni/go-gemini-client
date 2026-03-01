@@ -16,9 +16,9 @@ var (
 // Client は Gemini SDK をラップしたメイン構造体です。
 type Client struct {
 	client      *genai.Client
+	backend     genai.Backend
 	temperature float32
 	retryConfig retry.Config
-	backend     genai.Backend
 }
 
 // NewClient は提供された設定に基づいて、新しい Gemini クライアントを作成します。
@@ -35,9 +35,9 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 
 	return &Client{
 		client:      client,
+		backend:     clientCfg.Backend,
 		temperature: cfg.getTemperature(),
 		retryConfig: buildRetryConfig(cfg),
-		backend:     clientCfg.Backend,
 	}, nil
 }
 
