@@ -1,6 +1,7 @@
 package gemini
 
 import (
+	"errors"
 	"time"
 
 	"google.golang.org/genai"
@@ -19,6 +20,10 @@ const (
 	PollingInterval     = 2 * time.Second
 	PollingTimeout      = 60 * time.Second
 	AsyncCleanupTimeout = 15 * time.Second
+)
+
+var (
+	ErrEmptyPrompt = errors.New("プロンプトを空にすることはできません")
 )
 
 // PersonGeneration は人物生成の許可設定を表すカスタム型です。
