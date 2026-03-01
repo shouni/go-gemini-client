@@ -23,17 +23,6 @@ const (
 	AsyncCleanupTimeout = 15 * time.Second
 )
 
-const (
-	// PersonGenerationUnspecified は設定を省略し、APIのデフォルトに委ねます。
-	PersonGenerationUnspecified PersonGeneration = ""
-	// PersonGenerationAllowAll はすべての人物生成を許可します（キャラクター生成に推奨）。
-	PersonGenerationAllowAll PersonGeneration = "ALLOW_ALL"
-	// PersonGenerationAllowAdult は成人のみの生成を許可します（SDKデフォルト）。
-	PersonGenerationAllowAdult PersonGeneration = "ALLOW_ADULT"
-	// PersonGenerationDontAllow は人物の生成を許可しません。
-	PersonGenerationDontAllow PersonGeneration = "DONT_ALLOW"
-)
-
 // Config は初期化用の設定です。
 // Vertex AI を使用する場合は ProjectID と LocationID を指定してください。
 // Gemini API (Google AI Studio) を使用する場合は APIKey を指定してください。
@@ -57,6 +46,17 @@ type Client struct {
 
 // PersonGeneration は人物生成の許可設定を表すカスタム型です。
 type PersonGeneration string
+
+const (
+	// PersonGenerationUnspecified は設定を省略し、APIのデフォルトに委ねます。
+	PersonGenerationUnspecified PersonGeneration = ""
+	// PersonGenerationAllowAll はすべての人物生成を許可します（キャラクター生成に推奨）。
+	PersonGenerationAllowAll PersonGeneration = "ALLOW_ALL"
+	// PersonGenerationAllowAdult は成人のみの生成を許可します（SDKデフォルト）。
+	PersonGenerationAllowAdult PersonGeneration = "ALLOW_ADULT"
+	// PersonGenerationDontAllow は人物の生成を許可しません。
+	PersonGenerationDontAllow PersonGeneration = "DONT_ALLOW"
+)
 
 // GenerateOptions は各生成リクエストごとのオプションです。
 type GenerateOptions struct {
@@ -108,5 +108,8 @@ func (c Config) IsIncompleteVertex() bool {
 }
 
 func (o *GenerateOptions) HasImageConfig() bool {
+	if o == nil {
+		return false
+	}
 	return o.AspectRatio != "" || o.ImageSize != "" || o.PersonGeneration != PersonGenerationUnspecified
 }
