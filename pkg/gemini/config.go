@@ -77,6 +77,7 @@ func (c *Config) validate() error {
 	return nil
 }
 
+// toClientConfig Config を genai.ClientConfig に変換します。
 func (c *Config) toClientConfig() *genai.ClientConfig {
 	cc := &genai.ClientConfig{}
 	if c.isVertexAI() {
