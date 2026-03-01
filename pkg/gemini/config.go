@@ -16,6 +16,8 @@ var (
 
 	// 設定・バリデーションのエラー
 	ErrInvalidTemperature = errors.New("温度設定（Temperature）は 0.0 から 2.0 の間である必要があります")
+
+	ErrEmptyPrompt = errors.New("プロンプトを空にすることはできません")
 )
 
 // Config は初期化用の設定です。

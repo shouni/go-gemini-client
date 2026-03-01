@@ -2,15 +2,10 @@ package gemini
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/shouni/netarmor/retry"
 	"google.golang.org/genai"
-)
-
-var (
-	ErrEmptyPrompt = errors.New("プロンプトを空にすることはできません")
 )
 
 // Client は Gemini SDK をラップしたメイン構造体です。
