@@ -44,6 +44,20 @@ type Client struct {
 	backend     genai.Backend
 }
 
+// PersonGeneration は人物生成の許可設定を表すカスタム型です。
+type PersonGeneration string
+
+const (
+	// PersonGenerationUnspecified は設定を省略し、APIのデフォルトに委ねます。
+	PersonGenerationUnspecified PersonGeneration = ""
+	// PersonGenerationAllowAll はすべての人物生成を許可します（キャラクター生成に推奨）。
+	PersonGenerationAllowAll PersonGeneration = "ALLOW_ALL"
+	// PersonGenerationAllowAdult は成人のみの生成を許可します（SDKデフォルト）。
+	PersonGenerationAllowAdult PersonGeneration = "ALLOW_ADULT"
+	// PersonGenerationDontAllow は人物の生成を許可しません。
+	PersonGenerationDontAllow PersonGeneration = "DONT_ALLOW"
+)
+
 // GenerateOptions は各生成リクエストごとのオプションです。
 type GenerateOptions struct {
 	SystemPrompt   string
@@ -51,10 +65,11 @@ type GenerateOptions struct {
 	TopP           *float32
 	CandidateCount *int32
 	// 画像生成 (Nano Banana / Imagen) 特有のパラメータ
-	AspectRatio    string
-	ImageSize      string
-	Seed           *int64
-	SafetySettings []*genai.SafetySetting
+	AspectRatio      string
+	ImageSize        string
+	Seed             *int64
+	PersonGeneration PersonGeneration
+	SafetySettings   []*genai.SafetySetting
 }
 
 // Response は生成結果のラッパーです。
@@ -90,4 +105,11 @@ func (c Config) IsGeminiAPI() bool {
 func (c Config) IsIncompleteVertex() bool {
 	hasAny := c.ProjectID != "" || c.LocationID != ""
 	return hasAny && !c.IsVertexAI()
+}
+
+func (o *GenerateOptions) HasImageConfig() bool {
+	if o == nil {
+		return false
+	}
+	return o.AspectRatio != "" || o.ImageSize != "" || o.PersonGeneration != PersonGenerationUnspecified
 }
