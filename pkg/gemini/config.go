@@ -2,6 +2,7 @@ package gemini
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"google.golang.org/genai"
@@ -28,11 +29,6 @@ type Config struct {
 	MaxRetries   uint64
 	InitialDelay time.Duration
 	MaxDelay     time.Duration
-}
-
-// getTemperature は検証済みの Temperature を返します。
-func (c Config) getTemperature() (float32, error) {
-	return validateTemperature(c.Temperature)
 }
 
 // isVertexAI ProjectIDおよびLocationIDのセットを確認し、Vertex AIの設定が有効であるかをチェックします。
@@ -69,11 +65,31 @@ func (c Config) validate() error {
 	}
 
 	// 4. 数値バリデーション (Temperature 等)
-	if _, err := validateTemperature(c.Temperature); err != nil {
+	if err := c.validateTemperature(); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+// validateTemperature は Temperature の値が許容範囲内にあるかのみを検証します。
+func (c Config) validateTemperature() error {
+	if c.Temperature == nil {
+		return nil
+	}
+	val := *c.Temperature
+	if val < 0.0 || val > 2.0 {
+		return fmt.Errorf("%w (入力値: %f)", ErrInvalidTemperature, val)
+	}
+	return nil
+}
+
+// getTemperature は検証済みの Temperature またはデフォルト値を返します。
+func (c Config) getTemperature() float32 {
+	if c.Temperature == nil {
+		return DefaultTemperature
+	}
+	return *c.Temperature
 }
 
 // toClientConfig Config を genai.ClientConfig に変換します。

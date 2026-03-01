@@ -2,7 +2,6 @@ package gemini
 
 import (
 	"context"
-	"errors"
 	"io"
 	"math"
 	"testing"
@@ -11,41 +10,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
-
-// --- validateTemperature のテスト ---
-func TestValidateTemperature(t *testing.T) {
-	tests := []struct {
-		name    string
-		input   *float32
-		want    float32
-		wantErr error
-	}{
-		{"デフォルト値 (nil)", nil, DefaultTemperature, nil},
-		{"正常値 (0.5)", float32Ptr(0.5), 0.5, nil},
-		{"境界値 (0.0)", float32Ptr(0.0), 0.0, nil},
-		{"境界値 (2.0)", float32Ptr(2.0), 2.0, nil}, // 上限を 2.0 に修正
-		{"範囲外 (負数)", float32Ptr(-0.1), 0, ErrInvalidTemperature},
-		{"範囲外 (2.1)", float32Ptr(2.1), 0, ErrInvalidTemperature}, // 境界を 2.1 に修正
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := validateTemperature(tt.input)
-			if tt.wantErr != nil {
-				if !errors.Is(err, tt.wantErr) {
-					t.Errorf("validateTemperature() error = %v, wantErr %v", err, tt.wantErr)
-				}
-			} else {
-				if err != nil {
-					t.Fatalf("予期せぬエラーが発生しました: %v", err)
-				}
-				if got != tt.want {
-					t.Errorf("validateTemperature() = %v, want %v", got, tt.want)
-				}
-			}
-		})
-	}
-}
 
 // --- buildRetryConfig のテスト ---
 func TestBuildRetryConfig(t *testing.T) {

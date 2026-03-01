@@ -90,17 +90,6 @@ func buildRetryConfig(cfg Config) retry.Config {
 	return retryCfg
 }
 
-// validateTemperature は Temperature の値を検証します
-func validateTemperature(input *float32) (float32, error) {
-	if input == nil {
-		return DefaultTemperature, nil
-	}
-	if *input < 0.0 || *input > 2.0 {
-		return 0, fmt.Errorf("%w (入力値: %f)", ErrInvalidTemperature, *input)
-	}
-	return *input, nil
-}
-
 // extractTextFromResponse はレスポンスからテキストを抽出し、異常な終了理由がないか確認します。
 func extractTextFromResponse(resp *genai.GenerateContentResponse) (string, error) {
 	if resp == nil || len(resp.Candidates) == 0 {

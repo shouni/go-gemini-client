@@ -33,14 +33,9 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 		return nil, fmt.Errorf("Geminiクライアントの作成に失敗しました: %w", err)
 	}
 
-	temp, err := cfg.getTemperature()
-	if err != nil {
-		return nil, err
-	}
-
 	return &Client{
 		client:      client,
-		temperature: temp,
+		temperature: cfg.getTemperature(),
 		retryConfig: buildRetryConfig(cfg),
 		backend:     clientCfg.Backend,
 	}, nil
