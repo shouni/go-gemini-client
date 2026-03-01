@@ -4,7 +4,7 @@ go 1.25
 
 require (
 	github.com/shouni/netarmor v1.0.0
-	google.golang.org/genai v1.47.0
+	google.golang.org/genai v1.48.0
 	google.golang.org/grpc v1.79.1
 )
 
