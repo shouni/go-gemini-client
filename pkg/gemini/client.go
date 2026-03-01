@@ -93,10 +93,11 @@ func (c *Client) GenerateWithParts(ctx context.Context, modelName string, parts 
 		}
 	}
 	// 画像生成 (Imagen/Nano Banana) 用の設定
-	if opts.AspectRatio != "" || opts.ImageSize != "" {
+	if opts.AspectRatio != "" || opts.ImageSize != "" || opts.PersonGeneration != "" {
 		genConfig.ImageConfig = &genai.ImageConfig{
-			AspectRatio: opts.AspectRatio,
-			ImageSize:   opts.ImageSize,
+			AspectRatio:      opts.AspectRatio,
+			ImageSize:        opts.ImageSize,
+			PersonGeneration: opts.PersonGeneration,
 		}
 	}
 

@@ -51,10 +51,11 @@ type GenerateOptions struct {
 	TopP           *float32
 	CandidateCount *int32
 	// 画像生成 (Nano Banana / Imagen) 特有のパラメータ
-	AspectRatio    string
-	ImageSize      string
-	Seed           *int64
-	SafetySettings []*genai.SafetySetting
+	AspectRatio      string
+	ImageSize        string
+	Seed             *int64
+	PersonGeneration string
+	SafetySettings   []*genai.SafetySetting
 }
 
 // Response は生成結果のラッパーです。
