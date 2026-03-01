@@ -44,6 +44,18 @@ type Client struct {
 	backend     genai.Backend
 }
 
+// PersonGeneration は人物生成の許可設定を表すカスタム型です。
+type PersonGeneration string
+
+const (
+	// PersonGenerationAllowAll はすべての人物生成を許可します（キャラクター生成に推奨）。
+	PersonGenerationAllowAll PersonGeneration = "ALLOW_ALL"
+	// PersonGenerationAllowAdult は成人のみの生成を許可します（SDKデフォルト）。
+	PersonGenerationAllowAdult PersonGeneration = "ALLOW_ADULT"
+	// PersonGenerationDontAllow は人物の生成を許可しません。
+	PersonGenerationDontAllow PersonGeneration = "DONT_ALLOW"
+)
+
 // GenerateOptions は各生成リクエストごとのオプションです。
 type GenerateOptions struct {
 	SystemPrompt   string
@@ -54,7 +66,7 @@ type GenerateOptions struct {
 	AspectRatio      string
 	ImageSize        string
 	Seed             *int64
-	PersonGeneration string
+	PersonGeneration PersonGeneration
 	SafetySettings   []*genai.SafetySetting
 }
 

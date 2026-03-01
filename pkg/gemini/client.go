@@ -97,7 +97,7 @@ func (c *Client) GenerateWithParts(ctx context.Context, modelName string, parts 
 		genConfig.ImageConfig = &genai.ImageConfig{
 			AspectRatio:      opts.AspectRatio,
 			ImageSize:        opts.ImageSize,
-			PersonGeneration: opts.PersonGeneration,
+			PersonGeneration: string(opts.PersonGeneration),
 		}
 	}
 
