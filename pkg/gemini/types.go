@@ -48,6 +48,8 @@ type Client struct {
 type PersonGeneration string
 
 const (
+	// PersonGenerationUnspecified は設定を省略し、APIのデフォルトに委ねます。
+	PersonGenerationUnspecified PersonGeneration = ""
 	// PersonGenerationAllowAll はすべての人物生成を許可します（キャラクター生成に推奨）。
 	PersonGenerationAllowAll PersonGeneration = "ALLOW_ALL"
 	// PersonGenerationAllowAdult は成人のみの生成を許可します（SDKデフォルト）。
