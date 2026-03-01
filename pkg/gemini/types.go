@@ -4,7 +4,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/shouni/netarmor/retry"
 	"google.golang.org/genai"
 )
 
@@ -23,26 +22,9 @@ const (
 	AsyncCleanupTimeout = 15 * time.Second
 )
 
-// Config は初期化用の設定です。
-// Vertex AI を使用する場合は ProjectID と LocationID を指定してください。
-// Gemini API (Google AI Studio) を使用する場合は APIKey を指定してください。
-type Config struct {
-	APIKey       string
-	ProjectID    string // Vertex AI: Google Cloud Project ID
-	LocationID   string // Vertex AI: Location (e.g., "us-central1")
-	Temperature  *float32
-	MaxRetries   uint64
-	InitialDelay time.Duration
-	MaxDelay     time.Duration
-}
-
-// Client は Gemini SDK をラップしたメイン構造体です。
-type Client struct {
-	client      *genai.Client
-	temperature float32
-	retryConfig retry.Config
-	backend     genai.Backend
-}
+var (
+	ErrEmptyPrompt = errors.New("プロンプトを空にすることはできません")
+)
 
 // PersonGeneration は人物生成の許可設定を表すカスタム型です。
 type PersonGeneration string
@@ -77,34 +59,6 @@ type Response struct {
 	Text        string
 	Images      [][]byte // 生成画像 (InlineData) を保持します
 	RawResponse *genai.GenerateContentResponse
-}
-
-// 堅牢なエラーハンドリングのためのパッケージレベルのセンチネルエラー。
-var (
-	// 初期化時のエラー
-	ErrConfigRequired         = errors.New("APIKey または ProjectID/LocationID のいずれかが必須です")
-	ErrExclusiveConfig        = errors.New("ProjectID/LocationID と APIKey は排他的に設定してください")
-	ErrIncompleteVertexConfig = errors.New("Vertex AIを使用する場合、ProjectIDとLocationIDの両方を設定してください")
-
-	// 設定・バリデーションのエラー
-	ErrInvalidTemperature = errors.New("温度設定（Temperature）は 0.0 から 2.0 の間である必要があります")
-	ErrEmptyPrompt        = errors.New("プロンプトを空にすることはできません")
-)
-
-// IsVertexAI ProjectIDおよびLocationIDのセットを確認し、Vertex AIの設定が有効であるかをチェックします。
-func (c Config) IsVertexAI() bool {
-	return c.ProjectID != "" && c.LocationID != ""
-}
-
-// IsGeminiAPI APIKeyの有無を検証し、Gemini APIを利用するための設定が有効であるかを確認します。
-func (c Config) IsGeminiAPI() bool {
-	return c.APIKey != ""
-}
-
-// IsIncompleteVertex ProjectIDまたはLocationIDの有無を確認し、Vertex AIの設定漏れがないかを検証します。
-func (c Config) IsIncompleteVertex() bool {
-	hasAny := c.ProjectID != "" || c.LocationID != ""
-	return hasAny && !c.IsVertexAI()
 }
 
 func (o *GenerateOptions) HasImageConfig() bool {

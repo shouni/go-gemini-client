@@ -8,54 +8,31 @@ import (
 	"google.golang.org/genai"
 )
 
+// Client は Gemini SDK をラップしたメイン構造体です。
+type Client struct {
+	client      *genai.Client
+	backend     genai.Backend
+	temperature float32
+	retryConfig retry.Config
+}
+
 // NewClient は提供された設定に基づいて、新しい Gemini クライアントを作成します。
 func NewClient(ctx context.Context, cfg Config) (*Client, error) {
-	clientCfg := &genai.ClientConfig{}
-
-	// 1. 排他制御 (Conflict Check)
-	// Vertex AIの設定が一部でも存在し、かつAPIKeyもある場合は排他エラーを優先
-	if (cfg.IsVertexAI() || cfg.IsIncompleteVertex()) && cfg.IsGeminiAPI() {
-		return nil, ErrExclusiveConfig
+	if err := cfg.validate(); err != nil {
+		return nil, err
 	}
 
-	// 2. 完全性チェック (Incomplete Vertex Check)
-	// 片方だけ設定されている中途半端な状態を検知
-	if cfg.IsIncompleteVertex() {
-		return nil, ErrIncompleteVertexConfig
-	}
-
-	// 3. バックエンドの決定と必須チェック
-	if cfg.IsVertexAI() {
-		// Vertex AI モード
-		clientCfg.Project = cfg.ProjectID
-		clientCfg.Location = cfg.LocationID
-		clientCfg.Backend = genai.BackendVertexAI
-	} else if cfg.IsGeminiAPI() {
-		// Gemini API モード
-		clientCfg.APIKey = cfg.APIKey
-		clientCfg.Backend = genai.BackendGeminiAPI
-	} else {
-		// どちらの条件も満たさない場合は必須エラー
-		return nil, ErrConfigRequired
-	}
-
-	// クライアントの初期化
+	clientCfg := cfg.toClientConfig()
 	client, err := genai.NewClient(ctx, clientCfg)
 	if err != nil {
 		return nil, fmt.Errorf("Geminiクライアントの作成に失敗しました: %w", err)
 	}
 
-	// Temperature のバリデーションと設定
-	temp, err := validateTemperature(cfg.Temperature)
-	if err != nil {
-		return nil, err
-	}
-
 	return &Client{
 		client:      client,
-		temperature: temp,
-		retryConfig: buildRetryConfig(cfg),
 		backend:     clientCfg.Backend,
+		temperature: cfg.getTemperature(),
+		retryConfig: buildRetryConfig(cfg),
 	}, nil
 }
 
