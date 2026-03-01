@@ -31,29 +31,28 @@ type Config struct {
 }
 
 // getTemperature は検証済みの Temperature を返します。
-func (c *Config) getTemperature() float32 {
-	temp, _ := validateTemperature(c.Temperature)
-	return temp
+func (c Config) getTemperature() (float32, error) {
+	return validateTemperature(c.Temperature)
 }
 
 // isVertexAI ProjectIDおよびLocationIDのセットを確認し、Vertex AIの設定が有効であるかをチェックします。
-func (c *Config) isVertexAI() bool {
+func (c Config) isVertexAI() bool {
 	return c.ProjectID != "" && c.LocationID != ""
 }
 
 // isGeminiAPI APIKeyの有無を検証し、Gemini APIを利用するための設定が有効であるかを確認します。
-func (c *Config) isGeminiAPI() bool {
+func (c Config) isGeminiAPI() bool {
 	return c.APIKey != ""
 }
 
 // isIncompleteVertex ProjectIDまたはLocationIDの有無を確認し、Vertex AIの設定漏れがないかを検証します。
-func (c *Config) isIncompleteVertex() bool {
+func (c Config) isIncompleteVertex() bool {
 	hasAny := c.ProjectID != "" || c.LocationID != ""
 	return hasAny && !c.isVertexAI()
 }
 
 // validate は設定内容が正しいか、排他制御や値の範囲をチェックします。
-func (c *Config) validate() error {
+func (c Config) validate() error {
 	// 1. 排他制御
 	if (c.isVertexAI() || c.isIncompleteVertex()) && c.isGeminiAPI() {
 		return ErrExclusiveConfig
@@ -78,7 +77,7 @@ func (c *Config) validate() error {
 }
 
 // toClientConfig Config を genai.ClientConfig に変換します。
-func (c *Config) toClientConfig() *genai.ClientConfig {
+func (c Config) toClientConfig() *genai.ClientConfig {
 	cc := &genai.ClientConfig{}
 	if c.isVertexAI() {
 		cc.Project = c.ProjectID
