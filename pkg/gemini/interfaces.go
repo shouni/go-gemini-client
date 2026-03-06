@@ -2,6 +2,7 @@ package gemini
 
 import (
 	"context"
+	"io"
 
 	"google.golang.org/genai"
 )
@@ -15,8 +16,8 @@ type Generator interface {
 
 // FileRepository は、Gemini API で使用するファイルのアップロードおよび管理を担います。
 type FileRepository interface {
-	UploadFile(ctx context.Context, data []byte, mimeType, displayName string) (uri string, name string, err error)
-	DeleteFile(ctx context.Context, fileName string) error
+	UploadFile(ctx context.Context, r io.Reader, mimeType, displayName string) (uri string, name string, err error)
+	DeleteFile(ctx context.Context, name string) error
 }
 
 // GenerativeModel は、生成機能とファイル管理機能を集約したGeminiの操作用インターフェースです。
