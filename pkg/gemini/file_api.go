@@ -11,7 +11,9 @@ import (
 )
 
 // UploadFile はデータをアップロードし、そのファイルが Active 状態になるまで待機します。
-func (c *Client) UploadFile(ctx context.Context, r io.Reader, mimeType, displayName string) (uri string, name string, err error) {
+// アップロード処理自体が成功した場合、たとえその後の Active 化処理でエラーが発生しても
+// サーバー側にリソースが残る可能性があるため、バックグラウンドでの削除を試みます。
+func (c *Client) UploadFile(ctx context.Context, r io.Reader, mimeType, displayName string) (string, string, error) {
 	uploadCfg := &genai.UploadFileConfig{
 		MIMEType:    mimeType,
 		DisplayName: displayName,
@@ -23,9 +25,9 @@ func (c *Client) UploadFile(ctx context.Context, r io.Reader, mimeType, displayN
 	}
 
 	// Active 状態になるのを待機
-	uri, err = c.waitForFileActive(ctx, file.Name)
+	uri, err := c.waitForFileActive(ctx, file.Name)
 	if err != nil {
-		// 失敗した場合はクリーンアップ
+		// アップロード自体は成功しているため、クリーンアップのためにファイル名を渡す
 		c.asyncDelete(file.Name)
 		return "", "", fmt.Errorf("ファイル %q が有効状態になるまでの待機中にエラーが発生しました: %w", file.Name, err)
 	}

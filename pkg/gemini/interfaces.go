@@ -16,7 +16,7 @@ type Generator interface {
 
 // FileManager は、Gemini API で使用するファイルのアップロードおよび管理を担います。
 type FileManager interface {
-	UploadFile(ctx context.Context, r io.Reader, mimeType, displayName string) (uri string, name string, err error)
+	UploadFile(ctx context.Context, r io.Reader, mimeType, displayName string) (string, string, error)
 	DeleteFile(ctx context.Context, name string) error
 }
 
