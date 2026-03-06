@@ -1,24 +1,25 @@
 package gemini
 
 import (
-	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"time"
 
 	"google.golang.org/genai"
 )
 
-// UploadFile はデータをアップロードし、そのファイルが Active 状態（利用可能）になるまで待機します。
-// 戻り値として、File API での URI、管理用のファイル名、およびエラーを返します。
-func (c *Client) UploadFile(ctx context.Context, data []byte, mimeType, displayName string) (string, string, error) {
+// UploadFile はデータをアップロードし、そのファイルが Active 状態になるまで待機します。
+// アップロード処理自体が成功した場合、たとえその後の Active 化処理でエラーが発生しても
+// サーバー側にリソースが残る可能性があるため、バックグラウンドでの削除を試みます。
+func (c *Client) UploadFile(ctx context.Context, r io.Reader, mimeType, displayName string) (string, string, error) {
 	uploadCfg := &genai.UploadFileConfig{
 		MIMEType:    mimeType,
 		DisplayName: displayName,
 	}
 
-	file, err := c.client.Files.Upload(ctx, bytes.NewReader(data), uploadCfg)
+	file, err := c.client.Files.Upload(ctx, r, uploadCfg)
 	if err != nil {
 		return "", "", fmt.Errorf("Gemini File API へのアップロードに失敗しました: %w", err)
 	}
@@ -26,7 +27,7 @@ func (c *Client) UploadFile(ctx context.Context, data []byte, mimeType, displayN
 	// Active 状態になるのを待機
 	uri, err := c.waitForFileActive(ctx, file.Name)
 	if err != nil {
-		// 失敗またはタイムアウトした場合は、リソースを非同期でクリーンアップする
+		// アップロード自体は成功しているため、クリーンアップのためにファイル名を渡す
 		c.asyncDelete(file.Name)
 		return "", "", fmt.Errorf("ファイル %q が有効状態になるまでの待機中にエラーが発生しました: %w", file.Name, err)
 	}
@@ -35,15 +36,15 @@ func (c *Client) UploadFile(ctx context.Context, data []byte, mimeType, displayN
 }
 
 // DeleteFile は指定された名前のファイルを File API から削除します。
-func (c *Client) DeleteFile(ctx context.Context, fileName string) error {
-	if fileName == "" {
+func (c *Client) DeleteFile(ctx context.Context, name string) error {
+	if name == "" {
 		return nil
 	}
-	_, err := c.client.Files.Delete(ctx, fileName, nil)
+	_, err := c.client.Files.Delete(ctx, name, nil)
 	if err != nil {
-		return fmt.Errorf("ファイル %q の削除に失敗しました: %w", fileName, err)
+		return fmt.Errorf("ファイル %q の削除に失敗しました: %w", name, err)
 	}
-	slog.InfoContext(ctx, "File API オブジェクトを削除しました", "name", fileName)
+	slog.InfoContext(ctx, "File API オブジェクトを削除しました", "name", name)
 	return nil
 }
 
