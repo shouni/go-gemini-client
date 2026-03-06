@@ -6,8 +6,8 @@ import (
 	"google.golang.org/genai"
 )
 
-// GenerativeRunner は、コンテンツ生成機能を担うインターフェースです。
-type GenerativeRunner interface {
+// Generator は、コンテンツ生成機能を担うインターフェースです。
+type Generator interface {
 	GenerateContent(ctx context.Context, modelName string, prompt string) (*Response, error)
 	GenerateWithParts(ctx context.Context, modelName string, parts []*genai.Part, opts GenerateOptions) (*Response, error)
 	IsVertexAI() bool
@@ -19,8 +19,8 @@ type FileRepository interface {
 	DeleteFile(ctx context.Context, fileName string) error
 }
 
-// ModelClient は、生成機能とファイル管理機能を集約したGeminiの操作用インターフェースです。
-type ModelClient interface {
-	GenerativeRunner
+// GenerativeModel は、生成機能とファイル管理機能を集約したGeminiの操作用インターフェースです。
+type GenerativeModel interface {
+	Generator
 	FileRepository
 }
