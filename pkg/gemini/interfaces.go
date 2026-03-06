@@ -6,12 +6,21 @@ import (
 	"google.golang.org/genai"
 )
 
-// GenerativeModel インターフェース
-// Client がこれを満たすように実装します
-type GenerativeModel interface {
+// GenerativeRunner 生成機能に特化したインターフェース
+type GenerativeRunner interface {
 	GenerateContent(ctx context.Context, modelName string, prompt string) (*Response, error)
 	GenerateWithParts(ctx context.Context, modelName string, parts []*genai.Part, opts GenerateOptions) (*Response, error)
+	IsVertexAI() bool
+}
+
+// FileRepository ファイル管理機能に特化したインターフェース
+type FileRepository interface {
 	UploadFile(ctx context.Context, data []byte, mimeType, displayName string) (string, string, error)
 	DeleteFile(ctx context.Context, fileName string) error
-	IsVertexAI() bool
+}
+
+// ModelService 上位インターフェースを定義する（Facadeパターン）
+type ModelService interface {
+	GenerativeRunner
+	FileRepository
 }
