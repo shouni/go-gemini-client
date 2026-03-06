@@ -14,8 +14,8 @@ type Generator interface {
 	IsVertexAI() bool
 }
 
-// FileRepository は、Gemini API で使用するファイルのアップロードおよび管理を担います。
-type FileRepository interface {
+// FileManager は、Gemini API で使用するファイルのアップロードおよび管理を担います。
+type FileManager interface {
 	UploadFile(ctx context.Context, r io.Reader, mimeType, displayName string) (uri string, name string, err error)
 	DeleteFile(ctx context.Context, name string) error
 }
@@ -23,5 +23,5 @@ type FileRepository interface {
 // GenerativeModel は、生成機能とファイル管理機能を集約したGeminiの操作用インターフェースです。
 type GenerativeModel interface {
 	Generator
-	FileRepository
+	FileManager
 }
