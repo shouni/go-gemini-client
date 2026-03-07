@@ -29,17 +29,6 @@ func shouldRetry(err error) bool {
 		return false
 	}
 
-	// 安全フィルターによるブロック等の論理エラーはリトライしても解決しないため即座に終了します。
-	var apiErr *APIResponseError
-	if errors.As(err, &apiErr) {
-		return false
-	}
-
-	// コンテキストのキャンセルやタイムアウト（呼び出し側管理）はリトライ対象外です。
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return false
-	}
-
 	// gRPC ステータスコードに基づいた判定。
 	if st, ok := status.FromError(err); ok {
 		switch st.Code() {
@@ -53,6 +42,16 @@ func shouldRetry(err error) bool {
 		}
 	}
 
+	// 安全フィルターによるブロック等の論理エラーはリトライしても解決しないため即座に終了します。
+	var apiErr *APIResponseError
+	if errors.As(err, &apiErr) {
+		return false
+	}
+
+	// コンテキストのキャンセルやタイムアウト（呼び出し側管理）はリトライ対象外です。
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
 	// gRPCエラー以外（ネットワーク接続エラー、EOFなど）は一時的な障害の可能性があるためリトライを許可します。
 	if errors.Is(err, io.EOF) {
 		return true
