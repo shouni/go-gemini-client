@@ -29,6 +29,11 @@ func shouldRetry(err error) bool {
 		return false
 	}
 
+	// コンテキストのキャンセルやタイムアウト（呼び出し側管理）はリトライ対象外です。
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+
 	// gRPC ステータスコードに基づいた判定。
 	if st, ok := status.FromError(err); ok {
 		switch st.Code() {
@@ -37,8 +42,6 @@ func shouldRetry(err error) bool {
 			codes.ResourceExhausted, // レート制限
 			codes.Internal:          // サーバー内部エラー
 			return true
-		default:
-			return false
 		}
 	}
 
@@ -48,10 +51,6 @@ func shouldRetry(err error) bool {
 		return false
 	}
 
-	// コンテキストのキャンセルやタイムアウト（呼び出し側管理）はリトライ対象外です。
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return false
-	}
 	// gRPCエラー以外（ネットワーク接続エラー、EOFなど）は一時的な障害の可能性があるためリトライを許可します。
 	if errors.Is(err, io.EOF) {
 		return true
