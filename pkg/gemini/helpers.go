@@ -41,7 +41,9 @@ func shouldRetry(err error) bool {
 			codes.Unavailable,       // 一時的なサービス停止
 			codes.ResourceExhausted, // レート制限
 			codes.Internal:          // サーバー内部エラー
-			return true
+			return true // これらはリトライする
+		default:
+			return false // それ以外の gRPC エラー（400, 401, 403等）はリトライしない
 		}
 	}
 
