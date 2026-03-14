@@ -117,7 +117,6 @@ func TestConfig_ToClientConfig(t *testing.T) {
 	})
 }
 
-// pkg/gemini/config_test.go に以下のようなテストを追加してください
 func TestConfig_buildRetryConfig(t *testing.T) {
 	t.Run("デフォルト値が適用されること", func(t *testing.T) {
 		cfg := Config{}
