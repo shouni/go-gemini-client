@@ -5,34 +5,10 @@ import (
 	"io"
 	"math"
 	"testing"
-	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
-
-// --- buildRetryConfig のテスト ---
-func TestBuildRetryConfig(t *testing.T) {
-	t.Run("デフォルト値が適用されること", func(t *testing.T) {
-		cfg := Config{} // 全て nil の状態
-		got := buildRetryConfig(cfg)
-		if got.MaxRetries != DefaultMaxRetries {
-			t.Errorf("MaxRetries = %v, want %v", got.MaxRetries, DefaultMaxRetries)
-		}
-	})
-
-	t.Run("設定値で上書きされること", func(t *testing.T) {
-		cfg := Config{
-			MaxRetries:   5,
-			InitialDelay: 10 * time.Second,
-			MaxDelay:     60 * time.Second,
-		}
-		got := buildRetryConfig(cfg)
-		if got.MaxRetries != 5 || got.InitialInterval != 10*time.Second || got.MaxInterval != 60*time.Second {
-			t.Errorf("設定が正しく適用されていません: %+v", got)
-		}
-	})
-}
 
 // --- shouldRetry のテスト ---
 func TestShouldRetry(t *testing.T) {

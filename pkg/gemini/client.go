@@ -32,7 +32,7 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 		client:      client,
 		backend:     clientCfg.Backend,
 		temperature: cfg.getTemperature(),
-		retryConfig: buildRetryConfig(cfg),
+		retryConfig: cfg.buildRetryConfig(),
 	}, nil
 }
 

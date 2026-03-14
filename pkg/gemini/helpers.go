@@ -9,7 +9,6 @@ import (
 	"math"
 	"net"
 
-	"github.com/shouni/netarmor/retry"
 	"google.golang.org/genai"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -63,31 +62,6 @@ func shouldRetry(err error) bool {
 	}
 
 	return false
-}
-
-// buildRetryConfig は設定から retry.Config を構築します。
-func buildRetryConfig(cfg Config) retry.Config {
-	retryCfg := retry.DefaultConfig()
-
-	if cfg.MaxRetries > 0 {
-		retryCfg.MaxRetries = cfg.MaxRetries
-	} else {
-		retryCfg.MaxRetries = DefaultMaxRetries
-	}
-
-	if cfg.InitialDelay > 0 {
-		retryCfg.InitialInterval = cfg.InitialDelay
-	} else {
-		retryCfg.InitialInterval = DefaultInitialDelay
-	}
-
-	if cfg.MaxDelay > 0 {
-		retryCfg.MaxInterval = cfg.MaxDelay
-	} else {
-		retryCfg.MaxInterval = DefaultMaxDelay
-	}
-
-	return retryCfg
 }
 
 // extractTextFromResponse はレスポンスからテキストを抽出し、異常な終了理由がないか確認します。

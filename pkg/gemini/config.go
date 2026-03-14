@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/shouni/netarmor/retry"
 	"google.golang.org/genai"
 )
 
@@ -101,4 +102,29 @@ func (c Config) toClientConfig() *genai.ClientConfig {
 		cc.Backend = genai.BackendGeminiAPI
 	}
 	return cc
+}
+
+// buildRetryConfig は設定から retry.Config を構築します。
+func (c Config) buildRetryConfig() retry.Config {
+	rc := retry.DefaultConfig()
+
+	if c.MaxRetries > 0 {
+		rc.MaxRetries = c.MaxRetries
+	} else {
+		rc.MaxRetries = DefaultMaxRetries
+	}
+
+	if c.InitialDelay > 0 {
+		rc.InitialInterval = c.InitialDelay
+	} else {
+		rc.InitialInterval = DefaultInitialDelay
+	}
+
+	if c.MaxDelay > 0 {
+		rc.MaxInterval = c.MaxDelay
+	} else {
+		rc.MaxInterval = DefaultMaxDelay
+	}
+
+	return rc
 }
