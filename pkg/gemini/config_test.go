@@ -3,6 +3,7 @@ package gemini
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"google.golang.org/genai"
 )
@@ -112,6 +113,28 @@ func TestConfig_ToClientConfig(t *testing.T) {
 		got := cfg.toClientConfig()
 		if got.APIKey != "key-g" || got.Backend != genai.BackendGeminiAPI {
 			t.Errorf("toClientConfig() produced invalid Gemini config: %+v", got)
+		}
+	})
+}
+
+func TestConfig_buildRetryConfig(t *testing.T) {
+	t.Run("デフォルト値が適用されること", func(t *testing.T) {
+		cfg := Config{}
+		got := cfg.buildRetryConfig()
+		if got.MaxRetries != DefaultMaxRetries {
+			t.Errorf("MaxRetries = %v, want %v", got.MaxRetries, DefaultMaxRetries)
+		}
+	})
+
+	t.Run("設定値で上書きされること", func(t *testing.T) {
+		cfg := Config{
+			MaxRetries:   5,
+			InitialDelay: 10 * time.Second,
+			MaxDelay:     60 * time.Second,
+		}
+		got := cfg.buildRetryConfig()
+		if got.MaxRetries != 5 || got.InitialInterval != 10*time.Second || got.MaxInterval != 60*time.Second {
+			t.Errorf("設定が正しく適用されていません: %+v", got)
 		}
 	})
 }
