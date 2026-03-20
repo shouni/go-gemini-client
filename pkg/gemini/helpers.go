@@ -29,8 +29,7 @@ func shouldRetry(err error) bool {
 	}
 
 	// 安全フィルターによるブロック等の論理エラーはリトライしても解決しないため即座に終了します。
-	var apiErr *APIResponseError
-	if errors.As(err, &apiErr) {
+	if _, ok := errors.AsType[*APIResponseError](err); ok {
 		return false
 	}
 
@@ -56,8 +55,7 @@ func shouldRetry(err error) bool {
 	if errors.Is(err, io.EOF) {
 		return true
 	}
-	var netErr net.Error
-	if errors.As(err, &netErr) {
+	if netErr, ok := errors.AsType[net.Error](err); ok {
 		return netErr.Temporary() || netErr.Timeout()
 	}
 
@@ -108,6 +106,5 @@ func seedToPtrInt32(s *int64) *int32 {
 		return nil
 	}
 
-	v := int32(*s)
-	return &v
+	return new(int32(*s))
 }
