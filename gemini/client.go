@@ -79,7 +79,7 @@ func (c *Client) GenerateWithParts(ctx context.Context, modelName string, parts 
 		if opts.ImageSize != "" {
 			genConfig.ImageConfig.ImageSize = opts.ImageSize
 		}
-		if opts.PersonGeneration != PersonGenerationUnspecified {
+		if c.IsVertexAI() && opts.PersonGeneration != PersonGenerationUnspecified {
 			genConfig.ImageConfig.PersonGeneration = string(opts.PersonGeneration)
 		}
 	}
