@@ -7,9 +7,14 @@ import (
 	"google.golang.org/genai"
 )
 
+// ContentGenerator は、テキストやメッセージの生成に特化した最小のインターフェースです。
+type ContentGenerator interface {
+	GenerateContent(ctx context.Context, modelName string, prompt string) (*Response, error)
+}
+
 // Generator は、コンテンツ生成機能を担うインターフェースです。
 type Generator interface {
-	GenerateContent(ctx context.Context, modelName string, prompt string) (*Response, error)
+	ContentGenerator
 	GenerateWithParts(ctx context.Context, modelName string, parts []*genai.Part, opts GenerateOptions) (*Response, error)
 	IsVertexAI() bool
 }

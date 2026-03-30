@@ -12,8 +12,8 @@ import (
 type Client struct {
 	client      *genai.Client
 	backend     genai.Backend
-	temperature float32
 	retryConfig retry.Config
+	temperature float32
 }
 
 // NewClient は提供された設定に基づいて、新しい Gemini クライアントを作成します。
@@ -25,14 +25,14 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 	clientCfg := cfg.toClientConfig()
 	client, err := genai.NewClient(ctx, clientCfg)
 	if err != nil {
-		return nil, fmt.Errorf("Geminiクライアントの作成に失敗しました: %w", err)
+		return nil, fmt.Errorf("gemini: クライアントの作成に失敗しました: %w", err)
 	}
 
 	return &Client{
 		client:      client,
 		backend:     clientCfg.Backend,
-		temperature: cfg.getTemperature(),
 		retryConfig: cfg.buildRetryConfig(),
+		temperature: cfg.getTemperature(),
 	}, nil
 }
 
