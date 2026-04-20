@@ -52,12 +52,14 @@ type GenerateOptions struct {
 	Seed             *int64
 	PersonGeneration PersonGeneration
 	SafetySettings   []*genai.SafetySetting
+	ResponseMIMEType string
 }
 
 // Response は生成結果のラッパーです。
 type Response struct {
 	Text        string
 	Images      [][]byte // 生成画像 (InlineData) を保持します
+	Audios      [][]byte // Lyria 3 等の音声データ
 	RawResponse *genai.GenerateContentResponse
 }
 

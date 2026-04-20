@@ -3,6 +3,7 @@ package gemini
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/shouni/netarmor/retry"
 	"google.golang.org/genai"
@@ -55,8 +56,8 @@ func (c *Client) GenerateWithParts(ctx context.Context, modelName string, parts 
 	contents := []*genai.Content{{Role: "user", Parts: parts}}
 
 	genConfig := &genai.GenerateContentConfig{
-		Temperature:    genai.Ptr(c.temperature),
-		TopP:           genai.Ptr(DefaultTopP),
+		Temperature:    new(c.temperature),
+		TopP:           new(DefaultTopP),
 		CandidateCount: DefaultCandidateCount,
 		SafetySettings: opts.SafetySettings,
 	}
@@ -104,11 +105,19 @@ func (c *Client) generate(ctx context.Context, modelName string, contents []*gen
 		}
 
 		var images [][]byte
+		var audios [][]byte
 		if len(resp.Candidates) > 0 && resp.Candidates[0] != nil && resp.Candidates[0].Content != nil {
-			parts := resp.Candidates[0].Content.Parts
-			for _, part := range parts {
+			for _, part := range resp.Candidates[0].Content.Parts {
 				if part.InlineData != nil {
-					images = append(images, part.InlineData.Data)
+					mime := part.InlineData.MIMEType
+					data := part.InlineData.Data
+
+					// MIMEタイプで振り分け
+					if strings.HasPrefix(mime, "image/") {
+						images = append(images, data)
+					} else if strings.HasPrefix(mime, "audio/") {
+						audios = append(audios, data)
+					}
 				}
 			}
 		}
@@ -116,6 +125,7 @@ func (c *Client) generate(ctx context.Context, modelName string, contents []*gen
 		finalResp = &Response{
 			Text:        text,
 			Images:      images,
+			Audios:      audios,
 			RawResponse: resp,
 		}
 		return nil
