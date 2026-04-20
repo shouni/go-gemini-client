@@ -56,7 +56,7 @@ func TestNewClient(t *testing.T) {
 			cfg: Config{
 				ProjectID: "my-project",
 			},
-			wantErr: ErrIncompleteVertexConfig, // 指摘通り、詳細なエラーを期待するように修正
+			wantErr: ErrIncompleteVertexConfig,
 		},
 		{
 			name: "異常系：ProjectID と APIKey の両方が設定されている",
@@ -65,7 +65,7 @@ func TestNewClient(t *testing.T) {
 				ProjectID:  "my-project",
 				LocationID: "asia-northeast1",
 			},
-			wantErr: ErrExclusiveConfig, // 排他制御のテスト
+			wantErr: ErrExclusiveConfig,
 		},
 		{
 			name: "異常系：Temperatureが範囲外 (2.1)",
@@ -100,15 +100,25 @@ func TestNewClient(t *testing.T) {
 				if client.backend != genai.BackendVertexAI {
 					t.Errorf("BackendがVertex AIになっていません: got %v", client.backend)
 				}
+				if !client.IsVertexAI() {
+					t.Error("IsVertexAI() が false を返しました")
+				}
 			} else if tt.cfg.APIKey != "" {
 				if client.backend != genai.BackendGeminiAPI {
 					t.Errorf("BackendがGemini APIになっていません: got %v", client.backend)
 				}
+				if client.IsVertexAI() {
+					t.Error("IsVertexAI() が true を返しました")
+				}
 			}
 
-			// クライアント内部に正しく値がセットされているか確認
-			if tt.cfg.Temperature != nil && client.temperature != *tt.cfg.Temperature {
-				t.Errorf("Temperatureが一致しません: got %v, want %v", client.temperature, *tt.cfg.Temperature)
+			// Temperatureの反映確認 (デフォルト値の考慮)
+			expectedTemp := DefaultTemperature
+			if tt.cfg.Temperature != nil {
+				expectedTemp = *tt.cfg.Temperature
+			}
+			if client.temperature != expectedTemp {
+				t.Errorf("Temperatureが一致しません: got %v, want %v", client.temperature, expectedTemp)
 			}
 		})
 	}
@@ -116,6 +126,7 @@ func TestNewClient(t *testing.T) {
 
 func TestGenerateContent_Validation(t *testing.T) {
 	ctx := context.Background()
+	// クライアント作成自体が失敗しない最小構成
 	cfg := Config{APIKey: "dummy-key"}
 	c, err := NewClient(ctx, cfg)
 	if err != nil {
@@ -128,4 +139,26 @@ func TestGenerateContent_Validation(t *testing.T) {
 			t.Errorf("ErrEmptyPrompt を期待しましたが %v が返りました", err)
 		}
 	})
+}
+
+func TestGenerateOptions_HasImageConfig(t *testing.T) {
+	tests := []struct {
+		name string
+		opts GenerateOptions
+		want bool
+	}{
+		{"設定なし", GenerateOptions{}, false},
+		{"AspectRatioあり", GenerateOptions{AspectRatio: "16:9"}, true},
+		{"ImageSizeあり", GenerateOptions{ImageSize: "1K"}, true},
+		{"PersonGenerationあり", GenerateOptions{PersonGeneration: PersonGenerationAllowAll}, true},
+		{"その他のみ", GenerateOptions{SystemPrompt: "test"}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.opts.HasImageConfig(); got != tt.want {
+				t.Errorf("HasImageConfig() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }
