@@ -128,7 +128,10 @@ func TestGenerateContent_Validation(t *testing.T) {
 	ctx := context.Background()
 	// クライアント作成自体が失敗しない最小構成
 	cfg := Config{APIKey: "dummy-key"}
-	c, _ := NewClient(ctx, cfg)
+	c, err := NewClient(ctx, cfg)
+	if err != nil {
+		t.Fatalf("クライアントの初期化に失敗しました: %v", err)
+	}
 
 	t.Run("空のプロンプト", func(t *testing.T) {
 		_, err := c.GenerateContent(ctx, "gemini-1.5-flash", "")
