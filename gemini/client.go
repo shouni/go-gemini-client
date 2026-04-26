@@ -64,6 +64,11 @@ func (c *Client) GenerateWithParts(ctx context.Context, modelName string, parts 
 
 	if opts.ResponseMIMEType != "" {
 		genConfig.ResponseMIMEType = opts.ResponseMIMEType
+
+		// audio/wav などの音声生成を要求する場合、Modalities に AUDIO を含める必要がある
+		if strings.HasPrefix(opts.ResponseMIMEType, "audio/") {
+			genConfig.ResponseModalities = []string{"AUDIO", "TEXT"}
+		}
 	}
 	if opts.Seed != nil {
 		genConfig.Seed = seedToPtrInt32(opts.Seed)
