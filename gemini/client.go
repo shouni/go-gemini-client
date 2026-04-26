@@ -62,6 +62,9 @@ func (c *Client) GenerateWithParts(ctx context.Context, modelName string, parts 
 		SafetySettings: opts.SafetySettings,
 	}
 
+	if opts.ResponseMIMEType != "" {
+		genConfig.ResponseMIMEType = opts.ResponseMIMEType
+	}
 	if opts.Seed != nil {
 		genConfig.Seed = seedToPtrInt32(opts.Seed)
 	}
