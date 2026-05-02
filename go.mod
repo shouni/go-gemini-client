@@ -3,8 +3,8 @@ module github.com/shouni/go-gemini-client
 go 1.26
 
 require (
-	github.com/shouni/netarmor v1.0.2
-	google.golang.org/genai v1.54.0
+	github.com/shouni/netarmor v1.0.3
+	google.golang.org/genai v1.55.0
 	google.golang.org/grpc v1.80.0
 )
 
