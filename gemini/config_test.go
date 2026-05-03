@@ -139,6 +139,31 @@ func TestConfig_buildRetryConfig(t *testing.T) {
 	})
 }
 
+func TestConfig_FilePolling(t *testing.T) {
+	t.Run("デフォルト値が適用されること", func(t *testing.T) {
+		cfg := Config{}
+		if got := cfg.getFilePollingInterval(); got != PollingInterval {
+			t.Errorf("getFilePollingInterval() = %v, want %v", got, PollingInterval)
+		}
+		if got := cfg.getFilePollingTimeout(); got != PollingTimeout {
+			t.Errorf("getFilePollingTimeout() = %v, want %v", got, PollingTimeout)
+		}
+	})
+
+	t.Run("設定値で上書きされること", func(t *testing.T) {
+		cfg := Config{
+			FilePollingInterval: 500 * time.Millisecond,
+			FilePollingTimeout:  5 * time.Second,
+		}
+		if got := cfg.getFilePollingInterval(); got != 500*time.Millisecond {
+			t.Errorf("getFilePollingInterval() = %v, want %v", got, 500*time.Millisecond)
+		}
+		if got := cfg.getFilePollingTimeout(); got != 5*time.Second {
+			t.Errorf("getFilePollingTimeout() = %v, want %v", got, 5*time.Second)
+		}
+	})
+}
+
 func TestConfig_GetTemperature(t *testing.T) {
 	t.Run("nil の場合はデフォルト値を返す", func(t *testing.T) {
 		cfg := Config{Temperature: nil}

@@ -20,13 +20,15 @@ var (
 // Vertex AI を使用する場合は ProjectID と LocationID を指定してください。
 // Gemini API (Google AI Studio) を使用する場合は APIKey を指定してください。
 type Config struct {
-	APIKey       string
-	ProjectID    string // Vertex AI: Google Cloud Project ID
-	LocationID   string // Vertex AI: Location (e.g., "us-central1")
-	Temperature  *float32
-	MaxRetries   uint64
-	InitialDelay time.Duration
-	MaxDelay     time.Duration
+	APIKey              string
+	ProjectID           string // Vertex AI: Google Cloud Project ID
+	LocationID          string // Vertex AI: Location (e.g., "us-central1")
+	Temperature         *float32
+	MaxRetries          uint64
+	InitialDelay        time.Duration
+	MaxDelay            time.Duration
+	FilePollingInterval time.Duration
+	FilePollingTimeout  time.Duration
 }
 
 // isVertexAI ProjectIDおよびLocationIDのセットを確認し、Vertex AIの設定が有効であるかをチェックします。
@@ -75,7 +77,10 @@ func (c Config) validateTemperature() error {
 	if c.Temperature == nil {
 		return nil
 	}
-	val := *c.Temperature
+	return validateTemperature(*c.Temperature)
+}
+
+func validateTemperature(val float32) error {
 	if val < 0.0 || val > 2.0 {
 		return fmt.Errorf("%w (入力値: %f)", ErrInvalidTemperature, val)
 	}
@@ -127,4 +132,18 @@ func (c Config) buildRetryConfig() retry.Config {
 	}
 
 	return rc
+}
+
+func (c Config) getFilePollingInterval() time.Duration {
+	if c.FilePollingInterval > 0 {
+		return c.FilePollingInterval
+	}
+	return PollingInterval
+}
+
+func (c Config) getFilePollingTimeout() time.Duration {
+	if c.FilePollingTimeout > 0 {
+		return c.FilePollingTimeout
+	}
+	return PollingTimeout
 }

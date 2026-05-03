@@ -74,7 +74,7 @@ parts := []*genai.Part{
         },
     },
     {Text: "この画像に基づいて漫画の台本を作成してください"},
-}
+ }
 
 resp, err := client.GenerateWithParts(ctx, "gemini-3-pro-image-preview", parts, gemini.GenerateOptions{})
 
@@ -93,6 +93,8 @@ resp, err := client.GenerateWithParts(ctx, "gemini-3-pro-image-preview", parts, 
 | **`MaxRetries`** | 最大リトライ回数 | `1` |
 | **`InitialDelay`** | リトライ開始時の待機時間 | `30s` |
 | **`MaxDelay`** | リトライ待機時間の上限 | `120s` |
+| **`FilePollingInterval`** | File API の状態確認間隔 | `2s` |
+| **`FilePollingTimeout`** | File API の状態確認タイムアウト | `60s` |
 
 ---
 
@@ -109,8 +111,16 @@ resp, err := client.GenerateWithParts(ctx, "gemini-3-pro-image-preview", parts, 
 本ライブラリでは、以下のセンチネルエラーをエクスポートしています。
 
 * `ErrConfigRequired`: APIKey または ProjectID/LocationID のいずれも設定されていない場合。
+* `ErrExclusiveConfig`: APIKey と ProjectID/LocationID が同時に設定されている場合。
+* `ErrIncompleteVertexConfig`: ProjectID または LocationID の片方だけが設定されている場合。
 * `ErrEmptyPrompt`: プロンプトが空の場合。
 * `ErrInvalidTemperature`: 温度設定が範囲外 (0.0 - 2.0) の場合。
+* `ErrEmptyModelName`: モデル名が空の場合。
+* `ErrEmptyParts`: 生成パーツが空の場合。
+* `ErrInvalidPart`: 生成パーツに nil が含まれている場合。
+* `ErrInvalidTopP`: TopP が範囲外 (0.0 - 1.0) の場合。
+* `ErrInvalidCandidateCount`: CandidateCount が 1 未満の場合。
+* `ErrInvalidSeed`: Seed が int32 の範囲外の場合。
 
 ---
 

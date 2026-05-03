@@ -23,7 +23,13 @@ const (
 )
 
 var (
-	ErrEmptyPrompt = errors.New("プロンプトを空にすることはできません")
+	ErrEmptyPrompt           = errors.New("プロンプトを空にすることはできません")
+	ErrEmptyModelName        = errors.New("モデル名を空にすることはできません")
+	ErrEmptyParts            = errors.New("生成パーツを空にすることはできません")
+	ErrInvalidPart           = errors.New("生成パーツに nil を含めることはできません")
+	ErrInvalidTopP           = errors.New("TopP は 0.0 から 1.0 の間である必要があります")
+	ErrInvalidCandidateCount = errors.New("CandidateCount は 1 以上である必要があります")
+	ErrInvalidSeed           = errors.New("Seed は int32 の範囲内である必要があります")
 )
 
 // PersonGeneration は人物生成の許可設定を表すカスタム型です。
