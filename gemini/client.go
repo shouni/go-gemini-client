@@ -115,8 +115,8 @@ func (c *Client) buildGenerateConfig(opts GenerateOptions) (*genai.GenerateConte
 	}
 
 	genConfig := &genai.GenerateContentConfig{
-		Temperature:    genai.Ptr(temperature),
-		TopP:           genai.Ptr(topP),
+		Temperature:    new(temperature),
+		TopP:           new(topP),
 		CandidateCount: candidateCount,
 		SafetySettings: opts.SafetySettings,
 	}

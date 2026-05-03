@@ -99,5 +99,5 @@ func seedToPtrInt32(s *int64) (*int32, error) {
 		return nil, fmt.Errorf("%w (入力値: %d)", ErrInvalidSeed, *s)
 	}
 
-	return genai.Ptr(int32(*s)), nil
+	return new(int32(*s)), nil
 }
