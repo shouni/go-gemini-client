@@ -3,16 +3,65 @@ package gemini
 import (
 	"context"
 	"errors"
+	"io"
 	"testing"
 	"time"
+
+	"google.golang.org/genai"
 )
+
+type fakeFileClient struct {
+	uploadFile  *genai.File
+	uploadErr   error
+	getFiles    []*genai.File
+	getErr      error
+	getCalls    int
+	deleteErr   error
+	deleteCalls int
+}
+
+func (f *fakeFileClient) Upload(ctx context.Context, r io.Reader, config *genai.UploadFileConfig) (*genai.File, error) {
+	if f.uploadErr != nil {
+		return nil, f.uploadErr
+	}
+	if f.uploadFile != nil {
+		return f.uploadFile, nil
+	}
+	return &genai.File{Name: "files/test"}, nil
+}
+
+func (f *fakeFileClient) Get(ctx context.Context, name string, config *genai.GetFileConfig) (*genai.File, error) {
+	f.getCalls++
+	if f.getErr != nil {
+		return nil, f.getErr
+	}
+	if len(f.getFiles) == 0 {
+		return &genai.File{Name: name, State: genai.FileStateProcessing}, nil
+	}
+	idx := f.getCalls - 1
+	if idx >= len(f.getFiles) {
+		idx = len(f.getFiles) - 1
+	}
+	return f.getFiles[idx], nil
+}
+
+func (f *fakeFileClient) Delete(ctx context.Context, name string, config *genai.DeleteFileConfig) (*genai.DeleteFileResponse, error) {
+	f.deleteCalls++
+	if f.deleteErr != nil {
+		return nil, f.deleteErr
+	}
+	return &genai.DeleteFileResponse{}, nil
+}
 
 // --- waitForFileActive のテスト ---
 // ポーリングロジックがコンテキストキャンセルやタイムアウトを正しく扱うかを検証します。
 func TestWaitForFileActive_ContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
+	fake := &fakeFileClient{}
 	client := &Client{
-		// 実際はモックが必要ですが、ここではロジックの挙動をシミュレート
+		fileClient:          fake,
+		filePollingInterval: 10 * time.Millisecond,
+		filePollingTimeout:  time.Second,
 	}
 
 	// 実行後すぐにキャンセル
@@ -27,6 +76,57 @@ func TestWaitForFileActive_ContextCancel(t *testing.T) {
 	}
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("エラーが context.Canceled ではありません: %v", err)
+	}
+}
+
+func TestWaitForFileActive_ImmediateActive(t *testing.T) {
+	ctx := context.Background()
+	fake := &fakeFileClient{
+		getFiles: []*genai.File{
+			{Name: "test-file", URI: "https://example.com/file", State: genai.FileStateActive},
+		},
+	}
+	client := &Client{
+		fileClient:          fake,
+		filePollingInterval: time.Hour,
+		filePollingTimeout:  time.Hour,
+	}
+
+	uri, err := client.waitForFileActive(ctx, "test-file")
+	if err != nil {
+		t.Fatalf("waitForFileActive() unexpected error = %v", err)
+	}
+	if uri != "https://example.com/file" {
+		t.Fatalf("uri = %q, want https://example.com/file", uri)
+	}
+	if fake.getCalls != 1 {
+		t.Fatalf("Get calls = %d, want 1", fake.getCalls)
+	}
+}
+
+func TestWaitForFileActive_PollsUntilActive(t *testing.T) {
+	ctx := context.Background()
+	fake := &fakeFileClient{
+		getFiles: []*genai.File{
+			{Name: "test-file", State: genai.FileStateProcessing},
+			{Name: "test-file", URI: "https://example.com/file", State: genai.FileStateActive},
+		},
+	}
+	client := &Client{
+		fileClient:          fake,
+		filePollingInterval: time.Millisecond,
+		filePollingTimeout:  time.Second,
+	}
+
+	uri, err := client.waitForFileActive(ctx, "test-file")
+	if err != nil {
+		t.Fatalf("waitForFileActive() unexpected error = %v", err)
+	}
+	if uri != "https://example.com/file" {
+		t.Fatalf("uri = %q, want https://example.com/file", uri)
+	}
+	if fake.getCalls != 2 {
+		t.Fatalf("Get calls = %d, want 2", fake.getCalls)
 	}
 }
 
@@ -49,7 +149,7 @@ func TestAsyncDelete(t *testing.T) {
 
 // --- DeleteFile のバリデーションテスト ---
 func TestDeleteFile_Validation(t *testing.T) {
-	c := &Client{}
+	c := &Client{fileClient: &fakeFileClient{}}
 	ctx := context.Background()
 
 	t.Run("empty filename returns nil", func(t *testing.T) {

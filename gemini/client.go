@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/shouni/netarmor/retry"
 	"google.golang.org/genai"
@@ -11,10 +12,13 @@ import (
 
 // Client は Gemini SDK をラップしたメイン構造体です。
 type Client struct {
-	client      *genai.Client
-	backend     genai.Backend
-	retryConfig retry.Config
-	temperature float32
+	modelClient         modelClient
+	fileClient          fileClient
+	backend             genai.Backend
+	retryConfig         retry.Config
+	temperature         float32
+	filePollingInterval time.Duration
+	filePollingTimeout  time.Duration
 }
 
 // NewClient は提供された設定に基づいて、新しい Gemini クライアントを作成します。
@@ -30,10 +34,13 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 	}
 
 	return &Client{
-		client:      client,
-		backend:     clientCfg.Backend,
-		retryConfig: cfg.buildRetryConfig(),
-		temperature: cfg.getTemperature(),
+		modelClient:         genAIModelClient{models: client.Models},
+		fileClient:          genAIFileClient{files: client.Files},
+		backend:             clientCfg.Backend,
+		retryConfig:         cfg.buildRetryConfig(),
+		temperature:         cfg.getTemperature(),
+		filePollingInterval: cfg.getFilePollingInterval(),
+		filePollingTimeout:  cfg.getFilePollingTimeout(),
 	}, nil
 }
 
@@ -53,12 +60,64 @@ func (c *Client) GenerateContent(ctx context.Context, modelName string, prompt s
 
 // GenerateWithParts はテキストや画像 (GCS URI含む) などのマルチモーダルパーツを処理してコンテンツを生成します。
 func (c *Client) GenerateWithParts(ctx context.Context, modelName string, parts []*genai.Part, opts GenerateOptions) (*Response, error) {
+	if err := validateGenerateInput(modelName, parts); err != nil {
+		return nil, err
+	}
+
 	contents := []*genai.Content{{Role: "user", Parts: parts}}
 
+	genConfig, err := c.buildGenerateConfig(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.generate(ctx, modelName, contents, genConfig)
+}
+
+func validateGenerateInput(modelName string, parts []*genai.Part) error {
+	if modelName == "" {
+		return ErrEmptyModelName
+	}
+	if len(parts) == 0 {
+		return ErrEmptyParts
+	}
+	for _, part := range parts {
+		if part == nil {
+			return ErrInvalidPart
+		}
+	}
+	return nil
+}
+
+func (c *Client) buildGenerateConfig(opts GenerateOptions) (*genai.GenerateContentConfig, error) {
+	temperature := c.temperature
+	if opts.Temperature != nil {
+		if err := validateTemperature(*opts.Temperature); err != nil {
+			return nil, err
+		}
+		temperature = *opts.Temperature
+	}
+
+	topP := DefaultTopP
+	if opts.TopP != nil {
+		if *opts.TopP < 0.0 || *opts.TopP > 1.0 {
+			return nil, fmt.Errorf("%w (入力値: %f)", ErrInvalidTopP, *opts.TopP)
+		}
+		topP = *opts.TopP
+	}
+
+	candidateCount := DefaultCandidateCount
+	if opts.CandidateCount != nil {
+		if *opts.CandidateCount < 1 {
+			return nil, fmt.Errorf("%w (入力値: %d)", ErrInvalidCandidateCount, *opts.CandidateCount)
+		}
+		candidateCount = *opts.CandidateCount
+	}
+
 	genConfig := &genai.GenerateContentConfig{
-		Temperature:    new(c.temperature),
-		TopP:           new(DefaultTopP),
-		CandidateCount: DefaultCandidateCount,
+		Temperature:    genai.Ptr(temperature),
+		TopP:           genai.Ptr(topP),
+		CandidateCount: candidateCount,
 		SafetySettings: opts.SafetySettings,
 	}
 
@@ -71,7 +130,11 @@ func (c *Client) GenerateWithParts(ctx context.Context, modelName string, parts 
 		}
 	}
 	if opts.Seed != nil {
-		genConfig.Seed = seedToPtrInt32(opts.Seed)
+		seed, err := seedToPtrInt32(opts.Seed)
+		if err != nil {
+			return nil, err
+		}
+		genConfig.Seed = seed
 	}
 	if opts.SystemPrompt != "" {
 		genConfig.SystemInstruction = &genai.Content{
@@ -93,7 +156,7 @@ func (c *Client) GenerateWithParts(ctx context.Context, modelName string, parts 
 		}
 	}
 
-	return c.generate(ctx, modelName, contents, genConfig)
+	return genConfig, nil
 }
 
 // generate は共通の API 呼び出しとリトライロジックをカプセル化します。
@@ -101,7 +164,7 @@ func (c *Client) generate(ctx context.Context, modelName string, contents []*gen
 	var finalResp *Response
 
 	op := func() error {
-		resp, err := c.client.Models.GenerateContent(ctx, modelName, contents, config)
+		resp, err := c.modelClient.GenerateContent(ctx, modelName, contents, config)
 		if err != nil {
 			return err
 		}

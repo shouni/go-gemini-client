@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"math"
 	"net"
 
@@ -91,20 +90,14 @@ func extractTextFromResponse(resp *genai.GenerateContentResponse) (string, error
 }
 
 // seedToPtrInt32 は *int64 を SDK 用の *int32 に変換します。
-// 範囲外の場合は slog で警告を記録し、nil を返して処理を続行します。
-func seedToPtrInt32(s *int64) *int32 {
+func seedToPtrInt32(s *int64) (*int32, error) {
 	if s == nil {
-		return nil
+		return nil, nil
 	}
 
 	if *s > math.MaxInt32 || *s < math.MinInt32 {
-		slog.Warn("シード値が int32 の許容範囲を超えています。シードを指定せずに処理を続行します。",
-			"入力値", *s,
-			"最大値", math.MaxInt32,
-			"最小値", math.MinInt32,
-		)
-		return nil
+		return nil, fmt.Errorf("%w (入力値: %d)", ErrInvalidSeed, *s)
 	}
 
-	return new(int32(*s))
+	return genai.Ptr(int32(*s)), nil
 }

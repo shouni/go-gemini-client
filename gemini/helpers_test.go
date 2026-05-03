@@ -2,6 +2,7 @@ package gemini
 
 import (
 	"context"
+	"errors"
 	"io"
 	"math"
 	"testing"
@@ -52,7 +53,19 @@ func TestSeedToPtrInt32(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := seedToPtrInt32(tt.input)
+			got, err := seedToPtrInt32(tt.input)
+			if tt.want == nil && tt.input != nil {
+				if err == nil {
+					t.Fatal("範囲外の Seed でエラーが返されませんでした")
+				}
+				if !errors.Is(err, ErrInvalidSeed) {
+					t.Fatalf("seedToPtrInt32() error = %v, want %v", err, ErrInvalidSeed)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("seedToPtrInt32() unexpected error = %v", err)
+			}
 			if (got == nil) != (tt.want == nil) {
 				t.Fatalf("seedToPtrInt32() の結果（nilかどうか）が一致しません: got %v, want %v", got, tt.want)
 			}
