@@ -74,7 +74,7 @@ parts := []*genai.Part{
         },
     },
     {Text: "この画像に基づいて漫画の台本を作成してください"},
- }
+}
 
 resp, err := client.GenerateWithParts(ctx, "gemini-3-pro-image-preview", parts, gemini.GenerateOptions{})
 
