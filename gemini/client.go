@@ -124,9 +124,10 @@ func (c *Client) buildGenerateConfig(opts GenerateOptions) (*genai.GenerateConte
 	if opts.ResponseMIMEType != "" {
 		genConfig.ResponseMIMEType = opts.ResponseMIMEType
 
-		// audio/wav などの音声生成を要求する場合、Modalities に AUDIO を含める必要がある
 		if strings.HasPrefix(opts.ResponseMIMEType, "audio/") {
-			genConfig.ResponseModalities = []string{"AUDIO", "TEXT"}
+			genConfig.ResponseModalities = []string{"AUDIO"}
+		} else if strings.HasPrefix(opts.ResponseMIMEType, "image/") {
+			genConfig.ResponseModalities = []string{"IMAGE"}
 		}
 	}
 	if opts.Seed != nil {
@@ -144,6 +145,10 @@ func (c *Client) buildGenerateConfig(opts GenerateOptions) (*genai.GenerateConte
 	// 画像生成 (Imagen/Nano Banana) 用の設定
 	if opts.HasImageConfig() {
 		genConfig.ImageConfig = &genai.ImageConfig{}
+
+		if len(genConfig.ResponseModalities) == 0 {
+			genConfig.ResponseModalities = []string{"IMAGE"}
+		}
 
 		if opts.AspectRatio != "" {
 			genConfig.ImageConfig.AspectRatio = opts.AspectRatio

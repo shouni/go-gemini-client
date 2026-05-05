@@ -272,8 +272,44 @@ func TestBuildGenerateConfig_AudioResponseMIMETypeSetsModalities(t *testing.T) {
 	if got.ResponseMIMEType != "audio/wav" {
 		t.Fatalf("ResponseMIMEType = %q, want audio/wav", got.ResponseMIMEType)
 	}
-	if len(got.ResponseModalities) != 2 || got.ResponseModalities[0] != "AUDIO" || got.ResponseModalities[1] != "TEXT" {
-		t.Fatalf("ResponseModalities = %v, want [AUDIO TEXT]", got.ResponseModalities)
+	if len(got.ResponseModalities) != 1 || got.ResponseModalities[0] != "AUDIO" {
+		t.Fatalf("ResponseModalities = %v, want [AUDIO]", got.ResponseModalities)
+	}
+}
+
+func TestGenerateWithParts_AudioOnlyResponse(t *testing.T) {
+	ctx := context.Background()
+	fake := &fakeModelClient{
+		resp: &genai.GenerateContentResponse{
+			Candidates: []*genai.Candidate{
+				{
+					FinishReason: genai.FinishReasonStop,
+					Content: &genai.Content{
+						Parts: []*genai.Part{
+							{InlineData: &genai.Blob{MIMEType: "audio/wav", Data: []byte("only-audio")}},
+						},
+					},
+				},
+			},
+		},
+	}
+	c := &Client{
+		modelClient: fake,
+		retryConfig: Config{MaxRetries: 1}.buildRetryConfig(),
+		temperature: DefaultTemperature,
+	}
+
+	resp, err := c.GenerateWithParts(ctx, "gemini-test", []*genai.Part{{Text: "voice please"}}, GenerateOptions{
+		ResponseMIMEType: "audio/wav",
+	})
+	if err != nil {
+		t.Fatalf("音声のみのレスポンスでエラーが発生しました: %v", err)
+	}
+	if resp.Text != "" {
+		t.Fatalf("Text は空であるべきです: got %q", resp.Text)
+	}
+	if len(resp.Audios) != 1 || string(resp.Audios[0]) != "only-audio" {
+		t.Fatalf("音声データが正しく抽出されていません: %v", resp.Audios)
 	}
 }
 
