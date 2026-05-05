@@ -126,7 +126,7 @@ func (c *Client) buildGenerateConfig(opts GenerateOptions) (*genai.GenerateConte
 
 		// audio/wav などの音声生成を要求する場合、Modalities に AUDIO を含める必要がある
 		if strings.HasPrefix(opts.ResponseMIMEType, "audio/") {
-			genConfig.ResponseModalities = []string{"AUDIO", "TEXT"}
+			genConfig.ResponseModalities = []string{"AUDIO"}
 		}
 	}
 	if opts.Seed != nil {
