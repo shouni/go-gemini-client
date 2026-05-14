@@ -4,8 +4,8 @@ go 1.26
 
 require (
 	github.com/shouni/netarmor v1.0.3
-	google.golang.org/genai v1.56.0
-	google.golang.org/grpc v1.81.0
+	google.golang.org/genai v1.57.0
+	google.golang.org/grpc v1.81.1
 )
 
 require (
