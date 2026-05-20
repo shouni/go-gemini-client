@@ -42,9 +42,6 @@ func (f *fakeModelClient) GenerateContent(ctx context.Context, model string, con
 func TestNewClient(t *testing.T) {
 	ctx := context.Background()
 
-	// ヘルパー関数: float32のポインタを作成
-	ptrFloat := func(f float32) *float32 { return &f }
-
 	tests := []struct {
 		name    string
 		cfg     Config
@@ -62,14 +59,6 @@ func TestNewClient(t *testing.T) {
 			cfg: Config{
 				ProjectID:  "my-project",
 				LocationID: "us-central1",
-			},
-			wantErr: nil,
-		},
-		{
-			name: "正常系：Temperatureの設定確認",
-			cfg: Config{
-				APIKey:      "dummy-key",
-				Temperature: ptrFloat(0.5),
 			},
 			wantErr: nil,
 		},
@@ -97,14 +86,6 @@ func TestNewClient(t *testing.T) {
 				LocationID: "asia-northeast1",
 			},
 			wantErr: ErrExclusiveConfig,
-		},
-		{
-			name: "異常系：Temperatureが範囲外 (2.1)",
-			cfg: Config{
-				APIKey:      "dummy-key",
-				Temperature: ptrFloat(2.1),
-			},
-			wantErr: ErrInvalidTemperature,
 		},
 	}
 
@@ -141,15 +122,6 @@ func TestNewClient(t *testing.T) {
 				if client.IsVertexAI() {
 					t.Error("IsVertexAI() が true を返しました")
 				}
-			}
-
-			// Temperatureの反映確認 (デフォルト値の考慮)
-			expectedTemp := DefaultTemperature
-			if tt.cfg.Temperature != nil {
-				expectedTemp = *tt.cfg.Temperature
-			}
-			if client.temperature != expectedTemp {
-				t.Errorf("Temperatureが一致しません: got %v, want %v", client.temperature, expectedTemp)
 			}
 		})
 	}
@@ -213,20 +185,13 @@ func TestGenerateWithParts_Validation(t *testing.T) {
 }
 
 func TestBuildGenerateConfig_AppliesOptions(t *testing.T) {
-	temp := float32(0.4)
-	topP := float32(0.8)
-	candidateCount := int32(3)
 	seed := int64(12345)
 	c := &Client{
-		backend:     genai.BackendVertexAI,
-		temperature: DefaultTemperature,
+		backend: genai.BackendVertexAI,
 	}
 
 	got, err := c.buildGenerateConfig(GenerateOptions{
 		SystemPrompt:     "system",
-		Temperature:      &temp,
-		TopP:             &topP,
-		CandidateCount:   &candidateCount,
 		ResponseMIMEType: "application/json",
 		AspectRatio:      "16:9",
 		ImageSize:        "1K",
@@ -237,15 +202,6 @@ func TestBuildGenerateConfig_AppliesOptions(t *testing.T) {
 		t.Fatalf("buildGenerateConfig() unexpected error = %v", err)
 	}
 
-	if got.Temperature == nil || *got.Temperature != temp {
-		t.Fatalf("Temperature = %v, want %v", got.Temperature, temp)
-	}
-	if got.TopP == nil || *got.TopP != topP {
-		t.Fatalf("TopP = %v, want %v", got.TopP, topP)
-	}
-	if got.CandidateCount != candidateCount {
-		t.Fatalf("CandidateCount = %v, want %v", got.CandidateCount, candidateCount)
-	}
 	if got.Seed == nil || *got.Seed != int32(seed) {
 		t.Fatalf("Seed = %v, want %v", got.Seed, seed)
 	}
@@ -261,7 +217,7 @@ func TestBuildGenerateConfig_AppliesOptions(t *testing.T) {
 }
 
 func TestBuildGenerateConfig_AudioResponseMIMETypeSetsModalities(t *testing.T) {
-	c := &Client{temperature: DefaultTemperature}
+	c := &Client{}
 
 	got, err := c.buildGenerateConfig(GenerateOptions{
 		ResponseMIMEType: "audio/wav",
@@ -296,7 +252,6 @@ func TestGenerateWithParts_AudioOnlyResponse(t *testing.T) {
 	c := &Client{
 		modelClient: fake,
 		retryConfig: Config{MaxRetries: 1}.buildRetryConfig(),
-		temperature: DefaultTemperature,
 	}
 
 	resp, err := c.GenerateWithParts(ctx, "gemini-test", []*genai.Part{{Text: "voice please"}}, GenerateOptions{
@@ -310,66 +265,6 @@ func TestGenerateWithParts_AudioOnlyResponse(t *testing.T) {
 	}
 	if len(resp.Audios) != 1 || string(resp.Audios[0]) != "only-audio" {
 		t.Fatalf("音声データが正しく抽出されていません: %v", resp.Audios)
-	}
-}
-
-func TestBuildGenerateConfig_Validation(t *testing.T) {
-	c := &Client{temperature: DefaultTemperature}
-	invalidTemp := float32(2.1)
-	invalidTopP := float32(1.1)
-	invalidCandidateCount := int32(0)
-	invalidSeed := int64(1) << 40
-
-	tests := []struct {
-		name    string
-		opts    GenerateOptions
-		wantErr error
-	}{
-		{"Temperature範囲外", GenerateOptions{Temperature: &invalidTemp}, ErrInvalidTemperature},
-		{"TopP範囲外", GenerateOptions{TopP: &invalidTopP}, ErrInvalidTopP},
-		{"CandidateCount範囲外", GenerateOptions{CandidateCount: &invalidCandidateCount}, ErrInvalidCandidateCount},
-		{"Seed範囲外", GenerateOptions{Seed: &invalidSeed}, ErrInvalidSeed},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := c.buildGenerateConfig(tt.opts)
-			if !errors.Is(err, tt.wantErr) {
-				t.Fatalf("buildGenerateConfig() error = %v, want %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestGenerateWithParts_UsesInternalModelClient(t *testing.T) {
-	ctx := context.Background()
-	topP := float32(0.7)
-	fake := &fakeModelClient{}
-	c := &Client{
-		modelClient: fake,
-		retryConfig: Config{
-			MaxRetries:   1,
-			InitialDelay: time.Nanosecond,
-			MaxDelay:     time.Nanosecond,
-		}.buildRetryConfig(),
-		temperature: DefaultTemperature,
-	}
-
-	resp, err := c.GenerateWithParts(ctx, "gemini-test", []*genai.Part{{Text: "hello"}}, GenerateOptions{TopP: &topP})
-	if err != nil {
-		t.Fatalf("GenerateWithParts() unexpected error = %v", err)
-	}
-	if resp.Text != "ok" {
-		t.Fatalf("Response.Text = %q, want ok", resp.Text)
-	}
-	if fake.calls != 1 {
-		t.Fatalf("GenerateContent calls = %d, want 1", fake.calls)
-	}
-	if fake.gotModel != "gemini-test" {
-		t.Fatalf("model = %q, want gemini-test", fake.gotModel)
-	}
-	if fake.gotConfig == nil || fake.gotConfig.TopP == nil || *fake.gotConfig.TopP != topP {
-		t.Fatalf("TopP was not passed to model client: %+v", fake.gotConfig)
 	}
 }
 
@@ -398,7 +293,6 @@ func TestGenerateWithParts_ExtractsImagesAndAudios(t *testing.T) {
 			InitialDelay: time.Nanosecond,
 			MaxDelay:     time.Nanosecond,
 		}.buildRetryConfig(),
-		temperature: DefaultTemperature,
 	}
 
 	resp, err := c.GenerateWithParts(ctx, "gemini-test", []*genai.Part{{Text: "hello"}}, GenerateOptions{})

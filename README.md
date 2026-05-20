@@ -47,7 +47,6 @@ ctx := context.Background()
 client, err := gemini.NewClient(ctx, gemini.Config{
     ProjectID:  "your-google-cloud-project-id",
     LocationID: "asia-northeast1",
-    Temperature: genai.Ptr(0.7),
 })
 
 ```
@@ -89,7 +88,6 @@ resp, err := client.GenerateWithParts(ctx, "gemini-3-pro-image-preview", parts, 
 | **`APIKey`** | Gemini API キー (Google AI モード用) | - |
 | **`ProjectID`** | Google Cloud プロジェクト ID (Vertex AI モード用) | - |
 | **`LocationID`** | リージョン名 (Vertex AI モード用) | - |
-| **`Temperature`** | 応答の創造性 (0.0 - 2.0) | `0.7` |
 | **`MaxRetries`** | 最大リトライ回数 | `1` |
 | **`InitialDelay`** | リトライ開始時の待機時間 | `30s` |
 | **`MaxDelay`** | リトライ待機時間の上限 | `120s` |
@@ -114,12 +112,9 @@ resp, err := client.GenerateWithParts(ctx, "gemini-3-pro-image-preview", parts, 
 * `ErrExclusiveConfig`: APIKey と ProjectID/LocationID が同時に設定されている場合。
 * `ErrIncompleteVertexConfig`: ProjectID または LocationID の片方だけが設定されている場合。
 * `ErrEmptyPrompt`: プロンプトが空の場合。
-* `ErrInvalidTemperature`: 温度設定が範囲外 (0.0 - 2.0) の場合。
 * `ErrEmptyModelName`: モデル名が空の場合。
 * `ErrEmptyParts`: 生成パーツが空の場合。
 * `ErrInvalidPart`: 生成パーツに nil が含まれている場合。
-* `ErrInvalidTopP`: TopP が範囲外 (0.0 - 1.0) の場合。
-* `ErrInvalidCandidateCount`: CandidateCount が 1 未満の場合。
 * `ErrInvalidSeed`: Seed が int32 の範囲外の場合。
 
 ---

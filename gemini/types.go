@@ -12,10 +12,6 @@ const (
 	DefaultInitialDelay time.Duration = 30 * time.Second
 	DefaultMaxDelay     time.Duration = 120 * time.Second
 
-	DefaultTemperature    float32 = 0.7
-	DefaultTopP           float32 = 0.95
-	DefaultCandidateCount int32   = 1
-
 	// File API
 	PollingInterval     = 2 * time.Second
 	PollingTimeout      = 60 * time.Second
@@ -23,13 +19,11 @@ const (
 )
 
 var (
-	ErrEmptyPrompt           = errors.New("プロンプトを空にすることはできません")
-	ErrEmptyModelName        = errors.New("モデル名を空にすることはできません")
-	ErrEmptyParts            = errors.New("生成パーツを空にすることはできません")
-	ErrInvalidPart           = errors.New("生成パーツに nil を含めることはできません")
-	ErrInvalidTopP           = errors.New("TopP は 0.0 から 1.0 の間である必要があります")
-	ErrInvalidCandidateCount = errors.New("CandidateCount は 1 以上である必要があります")
-	ErrInvalidSeed           = errors.New("Seed は int32 の範囲内である必要があります")
+	ErrEmptyPrompt    = errors.New("プロンプトを空にすることはできません")
+	ErrEmptyModelName = errors.New("モデル名を空にすることはできません")
+	ErrEmptyParts     = errors.New("生成パーツを空にすることはできません")
+	ErrInvalidPart    = errors.New("生成パーツに nil を含めることはできません")
+	ErrInvalidSeed    = errors.New("Seed は int32 の範囲内である必要があります")
 )
 
 // PersonGeneration は人物生成の許可設定を表すカスタム型です。
@@ -48,10 +42,7 @@ const (
 
 // GenerateOptions は各生成リクエストごとのオプションです。
 type GenerateOptions struct {
-	SystemPrompt   string
-	Temperature    *float32
-	TopP           *float32
-	CandidateCount *int32
+	SystemPrompt string
 	// 画像生成 (Nano Banana / Imagen) 特有のパラメータ
 	AspectRatio      string
 	ImageSize        string

@@ -2,7 +2,6 @@ package gemini
 
 import (
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/shouni/netarmor/retry"
@@ -13,7 +12,6 @@ var (
 	ErrConfigRequired         = errors.New("APIKey または ProjectID/LocationID のいずれかが必須です")
 	ErrExclusiveConfig        = errors.New("ProjectID/LocationID と APIKey は排他的に設定してください")
 	ErrIncompleteVertexConfig = errors.New("Vertex AIを使用する場合、ProjectIDとLocationIDの両方を設定してください")
-	ErrInvalidTemperature     = errors.New("温度設定（Temperature）は 0.0 から 2.0 の間である必要があります")
 )
 
 // Config は初期化用の設定です。
@@ -23,7 +21,6 @@ type Config struct {
 	APIKey              string
 	ProjectID           string // Vertex AI: Google Cloud Project ID
 	LocationID          string // Vertex AI: Location (e.g., "us-central1")
-	Temperature         *float32
 	MaxRetries          uint64
 	InitialDelay        time.Duration
 	MaxDelay            time.Duration
@@ -64,35 +61,7 @@ func (c Config) validate() error {
 		return ErrConfigRequired
 	}
 
-	// 4. 数値バリデーション (Temperature 等)
-	if err := c.validateTemperature(); err != nil {
-		return err
-	}
-
 	return nil
-}
-
-// validateTemperature は Temperature の値が許容範囲内にあるかのみを検証します。
-func (c Config) validateTemperature() error {
-	if c.Temperature == nil {
-		return nil
-	}
-	return validateTemperature(*c.Temperature)
-}
-
-func validateTemperature(val float32) error {
-	if val < 0.0 || val > 2.0 {
-		return fmt.Errorf("%w (入力値: %f)", ErrInvalidTemperature, val)
-	}
-	return nil
-}
-
-// getTemperature は検証済みの Temperature またはデフォルト値を返します。
-func (c Config) getTemperature() float32 {
-	if c.Temperature == nil {
-		return DefaultTemperature
-	}
-	return *c.Temperature
 }
 
 // toClientConfig Config を genai.ClientConfig に変換します。
