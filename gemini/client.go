@@ -16,7 +16,6 @@ type Client struct {
 	fileClient          fileClient
 	backend             genai.Backend
 	retryConfig         retry.Config
-	temperature         float32
 	filePollingInterval time.Duration
 	filePollingTimeout  time.Duration
 }
@@ -38,7 +37,6 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 		fileClient:          genAIFileClient{files: client.Files},
 		backend:             clientCfg.Backend,
 		retryConfig:         cfg.buildRetryConfig(),
-		temperature:         cfg.getTemperature(),
 		filePollingInterval: cfg.getFilePollingInterval(),
 		filePollingTimeout:  cfg.getFilePollingTimeout(),
 	}, nil
@@ -90,34 +88,7 @@ func validateGenerateInput(modelName string, parts []*genai.Part) error {
 }
 
 func (c *Client) buildGenerateConfig(opts GenerateOptions) (*genai.GenerateContentConfig, error) {
-	temperature := c.temperature
-	if opts.Temperature != nil {
-		if err := validateTemperature(*opts.Temperature); err != nil {
-			return nil, err
-		}
-		temperature = *opts.Temperature
-	}
-
-	topP := DefaultTopP
-	if opts.TopP != nil {
-		if *opts.TopP < 0.0 || *opts.TopP > 1.0 {
-			return nil, fmt.Errorf("%w (入力値: %f)", ErrInvalidTopP, *opts.TopP)
-		}
-		topP = *opts.TopP
-	}
-
-	candidateCount := DefaultCandidateCount
-	if opts.CandidateCount != nil {
-		if *opts.CandidateCount < 1 {
-			return nil, fmt.Errorf("%w (入力値: %d)", ErrInvalidCandidateCount, *opts.CandidateCount)
-		}
-		candidateCount = *opts.CandidateCount
-	}
-
 	genConfig := &genai.GenerateContentConfig{
-		Temperature:    new(temperature),
-		TopP:           new(topP),
-		CandidateCount: candidateCount,
 		SafetySettings: opts.SafetySettings,
 	}
 

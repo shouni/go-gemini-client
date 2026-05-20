@@ -8,11 +8,6 @@ import (
 	"google.golang.org/genai"
 )
 
-// ptr はテスト用に float32 のポインタを作成するヘルパーです。
-func ptr(f float32) *float32 {
-	return &f
-}
-
 func TestConfig_Validate(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -35,14 +30,6 @@ func TestConfig_Validate(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name: "正常系: Temperature が境界値(0.0)",
-			config: Config{
-				APIKey:      "test-api-key",
-				Temperature: ptr(0.0),
-			},
-			wantErr: nil,
-		},
-		{
 			name: "異常系: APIKey と ProjectID が両方存在（排他エラー）",
 			config: Config{
 				APIKey:    "test-api-key",
@@ -61,22 +48,6 @@ func TestConfig_Validate(t *testing.T) {
 			name:    "異常系: 設定が空（必須エラー）",
 			config:  Config{},
 			wantErr: ErrConfigRequired,
-		},
-		{
-			name: "異常系: Temperature が範囲外(2.1)",
-			config: Config{
-				APIKey:      "test-api-key",
-				Temperature: ptr(2.1),
-			},
-			wantErr: ErrInvalidTemperature,
-		},
-		{
-			name: "異常系: Temperature が負の値(-0.1)",
-			config: Config{
-				APIKey:      "test-api-key",
-				Temperature: ptr(-0.1),
-			},
-			wantErr: ErrInvalidTemperature,
 		},
 	}
 
@@ -160,22 +131,6 @@ func TestConfig_FilePolling(t *testing.T) {
 		}
 		if got := cfg.getFilePollingTimeout(); got != 5*time.Second {
 			t.Errorf("getFilePollingTimeout() = %v, want %v", got, 5*time.Second)
-		}
-	})
-}
-
-func TestConfig_GetTemperature(t *testing.T) {
-	t.Run("nil の場合はデフォルト値を返す", func(t *testing.T) {
-		cfg := Config{Temperature: nil}
-		if got := cfg.getTemperature(); got != DefaultTemperature {
-			t.Errorf("getTemperature() = %v, want %v", got, DefaultTemperature)
-		}
-	})
-
-	t.Run("値がある場合はその値を返す", func(t *testing.T) {
-		cfg := Config{Temperature: ptr(1.5)}
-		if got := cfg.getTemperature(); got != 1.5 {
-			t.Errorf("getTemperature() = %v, want 1.5", got)
 		}
 	})
 }
