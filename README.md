@@ -6,6 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Report Card](https://goreportcard.com/badge/github.com/shouni/go-gemini-client)](https://goreportcard.com/report/github.com/shouni/go-gemini-client)
 [![Go Reference](https://pkg.go.dev/badge/github.com/shouni/go-gemini-client.svg)](https://pkg.go.dev/github.com/shouni/go-gemini-client)
+[![Status](https://img.shields.io/badge/Status-Completed-brightgreen)](#)
 
 ## 🎯 概要: Net Armor 統合型ハイブリッド Gemini クライアント
 
