@@ -17,7 +17,7 @@ type Workflow struct {
 	audio    AudioGenerator
 }
 
-// New は、指定された構成を使用して新しい Adapter を初期化して返します。
+// New は、指定された構成を使用して新しい Workflow を初期化して返します。
 func New(aiClient gemini.Generator, promptGen TextPromptGenerator, overrides ...Option) (*Workflow, error) {
 	opts := applyOptions(overrides...)
 	if aiClient == nil {
