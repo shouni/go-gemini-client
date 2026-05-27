@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strconv"
+	"time"
 
 	"golang.org/x/sync/singleflight"
 )
@@ -55,7 +56,8 @@ func calculateImagesHash(images []ImagePayload) string {
 
 // doSingleflight は同じ key の同時実行をまとめ、呼び出し元のキャンセルも尊重します。
 func doSingleflight[T any](ctx context.Context, group *singleflight.Group, key string, fn func(execCtx context.Context) (T, error)) (T, error) {
-	execCtx := context.WithoutCancel(ctx)
+	execCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute)
+	defer cancel()
 	ch := group.DoChan(key, func() (any, error) {
 		return fn(execCtx)
 	})
