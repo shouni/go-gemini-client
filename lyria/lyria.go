@@ -76,9 +76,6 @@ func (a *Adapter) Run(ctx context.Context, ai AIModels, input *CollectedContent)
 		return nil, nil, err
 	}
 
-	recipe.AIModels = ai
-	recipe.Lyrics = lyrics
-
 	wav, err := a.GenerateAudio(ctx, recipe, input.Images)
 	if err != nil {
 		return nil, nil, err
