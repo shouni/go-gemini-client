@@ -24,16 +24,16 @@ type AudioGenerator interface {
 	GenerateFullAudio(ctx context.Context, recipe *MusicRecipe, images []ImagePayload) ([]byte, error)
 }
 
-// TextPromptGenerator builds prompts for lyric and recipe generation.
+// TextPromptGenerator は歌詞およびレシピ生成のためのプロンプトを構築するインターフェースです。
 type TextPromptGenerator interface {
 	GenerateLyrics(mode string, input string) (string, error)
 	GenerateRecipe(mode string, lyrics *LyricsDraft) (string, error)
 }
 
-// PromptGenerator is kept as a compatibility alias for TextPromptGenerator.
+// PromptGenerator は TextPromptGenerator の互換性維持のためのエイリアスです。
 type PromptGenerator = TextPromptGenerator
 
-// AudioPromptBuilder builds prompts for Lyria audio generation.
+// AudioPromptBuilder は Lyria の音声生成用プロンプトを構築するインターフェースです。
 type AudioPromptBuilder interface {
 	BuildFullSong(recipe *MusicRecipe) string
 	BuildSection(recipe *MusicRecipe, section MusicSection) string
