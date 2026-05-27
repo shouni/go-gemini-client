@@ -99,7 +99,7 @@ func (m *MockPromptGen) GenerateCoverArt(mode string, recipe *MusicRecipe) (stri
 
 // --- Tests ---
 
-func TestAdapter_Run(t *testing.T) {
+func TestWorkflow_Run(t *testing.T) {
 	ctx := context.Background()
 	mAI := new(MockGeminiClient)
 	mPrompt := new(MockPromptGen)
@@ -109,8 +109,8 @@ func TestAdapter_Run(t *testing.T) {
 		defaultModel: "gemini-flash",
 	}
 
-	// テスト対象のアダプターを構築
-	adapter := &Adapter{
+	// テスト対象のワークフローを構築
+	workflow := &Workflow{
 		lyricist: textGenerator,
 		composer: textGenerator,
 		audio: &lyriaAudioGenerator{
@@ -164,7 +164,7 @@ func TestAdapter_Run(t *testing.T) {
 	}, nil)
 
 	// 実行
-	recipe, wav, err := adapter.Run(ctx, ai, input)
+	recipe, wav, err := workflow.Run(ctx, ai, input)
 
 	// 検証
 	assert.NoError(t, err)
@@ -181,12 +181,12 @@ func TestAdapter_Run(t *testing.T) {
 	mAI.AssertExpectations(t)
 }
 
-func TestAdapter_Compose(t *testing.T) {
+func TestWorkflow_Compose(t *testing.T) {
 	ctx := context.Background()
 	mAI := new(MockGeminiClient)
 	mPrompt := new(MockPromptGen)
 
-	adapter := &Adapter{
+	workflow := &Workflow{
 		composer: &lyriaTextGenerator{
 			aiClient:     mAI,
 			promptGen:    mPrompt,
@@ -204,7 +204,7 @@ func TestAdapter_Compose(t *testing.T) {
 		Text: rawJSON,
 	}, nil)
 
-	recipe, err := adapter.Compose(ctx, AIModels{
+	recipe, err := workflow.Compose(ctx, AIModels{
 		TextModel:   "gemini-flash",
 		ComposeMode: mode,
 	}, lyrics)
@@ -218,12 +218,12 @@ func TestAdapter_Compose(t *testing.T) {
 	mAI.AssertExpectations(t)
 }
 
-func TestNewAdapterUsesInjectedAudioPromptBuilder(t *testing.T) {
+func TestNewUsesInjectedAudioPromptBuilder(t *testing.T) {
 	ctx := context.Background()
 	mAI := new(MockGeminiClient)
 	mPrompt := new(MockPromptGen)
 
-	adapter, err := NewAdapter(mAI, mPrompt,
+	workflow, err := New(mAI, mPrompt,
 		WithGeminiModel("gemini-flash"),
 		WithLyriaModel("lyria-3"),
 		WithRateInterval(0),
@@ -238,7 +238,7 @@ func TestNewAdapterUsesInjectedAudioPromptBuilder(t *testing.T) {
 		mock.Anything,
 	).Return(&gemini.Response{Audios: [][]byte{{1, 2, 3}}}, nil)
 
-	audio, err := adapter.GenerateAudio(ctx, &MusicRecipe{Title: "Song"}, nil)
+	audio, err := workflow.GenerateAudio(ctx, &MusicRecipe{Title: "Song"}, nil)
 
 	assert.NoError(t, err)
 	assert.Equal(t, []byte{1, 2, 3}, audio)
