@@ -10,9 +10,9 @@
 
 ## 🎯 概要: Net Armor 統合型ハイブリッド Gemini クライアント
 
-**Go Gemini Client** は、[shouni/netarmor](https://github.com/shouni/netarmor) をコアに採用した、**Google Gemini (Google AI & Vertex AI)** を安全かつ効率的に利用するためのライブラリです。
+**Go Gemini Client** は、[shouni/netarmor](https://github.com/shouni/netarmor) をリトライ基盤に採用した、**Google Gemini API / Vertex AI** 向けの Go ライブラリです。
 
-ひとつのインターフェースで、軽量な **Gemini API (Google AI Studio)** と、エンタープライズ向けの **Vertex AI (Google Cloud)** を切り替えて利用可能。特に GCS (Google Cloud Storage) とのシームレスな連携に最適化されています。
+ひとつのクライアントで、API Key 方式の **Gemini API (Google AI Studio)** と、Google Cloud 認証を使う **Vertex AI** を切り替えて利用できます。テキスト生成だけでなく、GCS URI や File API を使ったマルチモーダル入力、画像・音声レスポンス、Lyria による音楽生成ワークフローも扱えるように設計されています。
 
 ---
 
@@ -20,63 +20,190 @@
 
 ### 🤖 ハイブリッド・バックエンド・サポート
 
-* **Dual Backend**: `APIKey` 方式（Google AI）と `ProjectID/LocationID` 方式（Vertex AI）の両方に対応。
-* **Vertex AI 連携**: Cloud Run 等の環境で IAM 権限を利用した認証に対応。API Key の管理が不要になり、よりセキュアな運用が可能です。
+- **Dual Backend**: `APIKey` 方式と `ProjectID` / `LocationID` 方式の両方に対応。
+- **Vertex AI 連携**: Cloud Run などの環境ではサービスアカウントや Application Default Credentials を利用できます。
+- **GCS 直接参照**: Vertex AI では `gs://` URI を `genai.Part` として直接プロンプトに含められます。
 
-### 🛡️ 堅牢な AI クライアント (`pkg/gemini`)
+### 🛡️ 堅牢な AI クライアント (`gemini`)
 
-* **高度なリトライ戦略**: 指数バックオフによる自動復旧。セーフティフィルタによるブロックなど、リトライすべきでないエラーを識別して即時停止するインテリジェントなロジックを搭載。
-* **決定論的な制御**: シード値 (`Seed`) の管理により、生成 AI 特有の揺らぎを制御し、再現性のある出力をサポート。
-* **型安全なエラー判定**: `errors.Is` を用いた正確なエラーハンドリングが可能です。
+- **高度なリトライ戦略**: `netarmor` の retry を利用し、一時的なネットワーク障害や API 側の一過性エラーを指数バックオフで再試行します。
+- **リトライ不要エラーの判定**: セーフティフィルタによるブロックや空レスポンスなど、再試行しても解決しにくい API レスポンスエラーを識別します。
+- **決定論的な制御**: `Seed` により、生成結果の再現性を必要とするワークフローをサポートします。
+- **型安全なエラー判定**: 設定不備や入力不備はセンチネルエラーとして公開しており、`errors.Is` で判定できます。
 
 ### 📁 高度なリソース管理
 
-* **GCS 直接参照 (Vertex AI)**: Vertex AI モードでは、`gs://` 形式の URI を直接プロンプトに含めることができ、事前のアップロードや待機ループが不要になります。
-* **File API サポート (Gemini API)**: メディアデータのアップロードと `Active` 状態までの自動ポーリングをサポート。
+- **File API サポート**: ファイルアップロード後、利用可能な `Active` 状態になるまで自動でポーリングします。
+- **自動クリーンアップ**: Active 化に失敗した File API オブジェクトはバックグラウンドで削除を試みます。
+- **レスポンス抽出**: テキスト、生成画像、生成音声を `gemini.Response` にまとめて返します。
+
+### 🎼 Lyria ワークフロー (`lyria`)
+
+- **作詞から音声生成までの統合**: 歌詞生成、作曲レシピ生成、Lyria 音声生成を `Adapter` で一括実行できます。
+- **セクション別生成**: 曲のセクションごとに音声を生成し、WAV として結合できます。
+- **重複呼び出し抑制**: singleflight により、同一条件の音声生成リクエストをまとめます。
 
 ---
 
 ## 🚀 クイックスタート
 
-### クライアントの初期化
+### インストール
 
-#### 1. Vertex AI モード (推奨: Cloud Run / GCS 連携)
-
-```go
-ctx := context.Background()
-client, err := gemini.NewClient(ctx, gemini.Config{
-    ProjectID:  "your-google-cloud-project-id",
-    LocationID: "asia-northeast1",
-})
-
+```sh
+go get github.com/shouni/go-gemini-client
 ```
 
-#### 2. Gemini API モード (API Key 方式)
+### 1. Gemini API モード (API Key 方式)
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+
+	"github.com/shouni/go-gemini-client/gemini"
+)
+
+func main() {
+	ctx := context.Background()
+
+	client, err := gemini.NewClient(ctx, gemini.Config{
+		APIKey: "YOUR_GEMINI_API_KEY",
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	resp, err := client.GenerateContent(ctx, "gemini-2.5-flash", "Goで短い俳句を書いて")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println(resp.Text)
+}
+```
+
+### 2. Vertex AI モード (Cloud Run / GCS 連携)
 
 ```go
 client, err := gemini.NewClient(ctx, gemini.Config{
-    APIKey: "YOUR_GEMINI_API_KEY",
+	ProjectID:  "your-google-cloud-project-id",
+	LocationID: "asia-northeast1",
 })
-
+if err != nil {
+	return err
+}
 ```
 
-### マルチモーダル生成 (GCS URI 直接使用)
+Vertex AI モードでは、Google Cloud 側の認証情報を利用します。Cloud Run などの環境では API Key をアプリケーションに持たせずに運用できます。
 
-Vertex AI モードを利用すると、GCS 上の画像をダウンロードすることなく直接解析できます。
+---
+
+## 🧩 マルチモーダル生成
+
+`GenerateWithParts` は公式 SDK の `genai.Part` をそのまま受け取ります。テキスト、画像、GCS URI、File API の URI などを組み合わせた入力に対応できます。
 
 ```go
 parts := []*genai.Part{
-    {
-        FileData: &genai.FileData{
-            URI:      "gs://my-bucket/character-design.jpg",
-            MIMEType: "image/jpeg",
-        },
-    },
-    {Text: "この画像に基づいて漫画の台本を作成してください"},
+	{
+		FileData: &genai.FileData{
+			URI:      "gs://my-bucket/sample.jpg",
+			MIMEType: "image/jpeg",
+		},
+	},
+	{Text: "この画像の内容を日本語で要約してください"},
 }
 
-resp, err := client.GenerateWithParts(ctx, "gemini-3-pro-image-preview", parts, gemini.GenerateOptions{})
+resp, err := client.GenerateWithParts(ctx, "gemini-2.5-flash", parts, gemini.GenerateOptions{
+	SystemPrompt: "簡潔に回答してください。",
+})
+if err != nil {
+	return err
+}
 
+fmt.Println(resp.Text)
+```
+
+---
+
+## 🖼️ 画像・音声レスポンス
+
+`ResponseMIMEType` に `image/*` または `audio/*` を指定すると、レスポンスモダリティが自動設定されます。Inline data は `Response.Images` または `Response.Audios` に格納されます。
+
+```go
+seed := int64(1234)
+
+resp, err := client.GenerateWithParts(ctx, "gemini-2.5-flash-image-preview", []*genai.Part{
+	{Text: "青い招き猫のステッカー画像を生成して"},
+}, gemini.GenerateOptions{
+	ResponseMIMEType: "image/png",
+	AspectRatio:      "1:1",
+	ImageSize:        "1K",
+	Seed:             &seed,
+})
+if err != nil {
+	return err
+}
+
+if len(resp.Images) > 0 {
+	// resp.Images[0] contains image bytes.
+}
+```
+
+---
+
+## 📤 File API
+
+Gemini API の File API を使う場合は、アップロード後にファイルが `Active` になるまで自動で待機します。
+
+```go
+f, err := os.Open("movie.mp4")
+if err != nil {
+	return err
+}
+defer f.Close()
+
+uri, name, err := client.UploadFile(ctx, f, "video/mp4", "movie.mp4")
+if err != nil {
+	return err
+}
+defer client.DeleteFile(context.Background(), name)
+
+resp, err := client.GenerateWithParts(ctx, "gemini-2.5-flash", []*genai.Part{
+	{
+		FileData: &genai.FileData{
+			URI:      uri,
+			MIMEType: "video/mp4",
+		},
+	},
+	{Text: "この動画を要約してください"},
+}, gemini.GenerateOptions{})
+```
+
+---
+
+## 🎵 Lyria Adapter
+
+`lyria` パッケージは、歌詞生成・作曲レシピ生成・Lyria 音声生成を束ねるファサードです。利用側で `TextPromptGenerator` と `AudioPromptBuilder` を実装し、プロダクト固有のプロンプト設計を差し込めます。
+
+```go
+adapter, err := lyria.NewAdapter(
+	client,
+	promptGenerator,
+	lyria.WithGeminiModel("gemini-2.5-flash"),
+	lyria.WithLyriaModel("lyria-realtime-exp"),
+	lyria.WithAudioPromptBuilder(audioPromptBuilder),
+	lyria.WithMaxConcurrency(2),
+)
+if err != nil {
+	return err
+}
+
+recipe, wavBytes, err := adapter.Run(ctx, lyria.AIModels{}, &lyria.CollectedContent{
+	Prompt: "夜の東京を走るシンセポップ",
+})
 ```
 
 ---
@@ -85,49 +212,65 @@ resp, err := client.GenerateWithParts(ctx, "gemini-3-pro-image-preview", parts, 
 
 | 設定項目 | 役割 | デフォルト値 |
 | --- | --- | --- |
-| **`APIKey`** | Gemini API キー (Google AI モード用) | - |
-| **`ProjectID`** | Google Cloud プロジェクト ID (Vertex AI モード用) | - |
-| **`LocationID`** | リージョン名 (Vertex AI モード用) | - |
-| **`MaxRetries`** | 最大リトライ回数 | `1` |
-| **`InitialDelay`** | リトライ開始時の待機時間 | `30s` |
-| **`MaxDelay`** | リトライ待機時間の上限 | `120s` |
-| **`FilePollingInterval`** | File API の状態確認間隔 | `2s` |
-| **`FilePollingTimeout`** | File API の状態確認タイムアウト | `60s` |
+| `APIKey` | Gemini API キー。Google AI Studio / Gemini API で利用します。 | - |
+| `ProjectID` | Google Cloud プロジェクト ID。Vertex AI で利用します。 | - |
+| `LocationID` | Vertex AI のリージョン。例: `asia-northeast1`, `us-central1` | - |
+| `MaxRetries` | 最大リトライ回数 | `1` |
+| `InitialDelay` | リトライ開始時の待機時間 | `30s` |
+| `MaxDelay` | リトライ待機時間の上限 | `120s` |
+| `FilePollingInterval` | File API の状態確認間隔 | `2s` |
+| `FilePollingTimeout` | File API の状態確認タイムアウト | `60s` |
+
+`APIKey` と `ProjectID` / `LocationID` は排他的です。Vertex AI を使う場合は `ProjectID` と `LocationID` の両方を指定してください。
 
 ---
 
-## 📂 プロジェクト構造
+## 🧪 生成オプション (`gemini.GenerateOptions`)
 
-| ディレクトリ | 役割 |
+| 設定項目 | 役割 |
 | --- | --- |
-| `pkg/gemini` | **コア・クライアント**: 通信、リトライ、マルチモーダル制御、Backend 切り替え。 |
+| `SystemPrompt` | System instruction を指定します。 |
+| `AspectRatio` | 画像生成時のアスペクト比を指定します。 |
+| `ImageSize` | 画像生成時のサイズを指定します。 |
+| `Seed` | 再現性のためのシード値。`int32` の範囲内である必要があります。 |
+| `PersonGeneration` | Vertex AI 画像生成での人物生成ポリシーを指定します。 |
+| `SafetySettings` | SDK の SafetySettings を指定します。 |
+| `ResponseMIMEType` | `image/png` や `audio/wav` など、期待するレスポンス MIME type を指定します。 |
 
 ---
 
 ## 📜 エラーハンドリング
 
-本ライブラリでは、以下のセンチネルエラーをエクスポートしています。
+本ライブラリでは、以下のセンチネルエラーをエクスポートしています。`errors.Is` を使って判定できます。
 
-* `ErrConfigRequired`: APIKey または ProjectID/LocationID のいずれも設定されていない場合。
-* `ErrExclusiveConfig`: APIKey と ProjectID/LocationID が同時に設定されている場合。
-* `ErrIncompleteVertexConfig`: ProjectID または LocationID の片方だけが設定されている場合。
-* `ErrEmptyPrompt`: プロンプトが空の場合。
-* `ErrEmptyModelName`: モデル名が空の場合。
-* `ErrEmptyParts`: 生成パーツが空の場合。
-* `ErrInvalidPart`: 生成パーツに nil が含まれている場合。
-* `ErrInvalidSeed`: Seed が int32 の範囲外の場合。
+- `ErrConfigRequired`: `APIKey` または `ProjectID` / `LocationID` のいずれも設定されていない場合。
+- `ErrExclusiveConfig`: `APIKey` と `ProjectID` / `LocationID` が同時に設定されている場合。
+- `ErrIncompleteVertexConfig`: `ProjectID` または `LocationID` の片方だけが設定されている場合。
+- `ErrEmptyPrompt`: プロンプトが空の場合。
+- `ErrEmptyModelName`: モデル名が空の場合。
+- `ErrEmptyParts`: 生成パーツが空の場合。
+- `ErrInvalidPart`: 生成パーツに nil が含まれている場合。
+- `ErrInvalidSeed`: `Seed` が `int32` の範囲外の場合。
+
+---
+
+## 📂 パッケージ構成
+
+| パッケージ | 役割 |
+| --- | --- |
+| `github.com/shouni/go-gemini-client/gemini` | Gemini / Vertex AI クライアント、リトライ、File API、レスポンス抽出。 |
+| `github.com/shouni/go-gemini-client/lyria` | 歌詞生成、作曲レシピ生成、Lyria 音声生成の統合アダプタ。 |
 
 ---
 
 ## 🤝 依存関係 (Dependencies)
 
-* [google.golang.org/genai](https://pkg.go.dev/google.golang.org/genai) - Google Gemini 公式 SDK
-* [shouni/netarmor](https://github.com/shouni/netarmor) - **ネットワークセキュリティ & リトライ戦略**
+- [google.golang.org/genai](https://pkg.go.dev/google.golang.org/genai) - Google Gemini 公式 SDK
+- [shouni/netarmor](https://github.com/shouni/netarmor) - ネットワークセキュリティ & リトライ戦略
+- [shouni/audio](https://github.com/shouni/audio) - WAV 結合・音声処理ユーティリティ
 
 ---
 
-### 📜 ライセンス (License)
+## 📜 ライセンス (License)
 
 このプロジェクトは [MIT License](https://opensource.org/licenses/MIT) の下で公開されています。
-
----
