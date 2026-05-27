@@ -50,18 +50,3 @@ type CollectedContent struct {
 	Prompt string
 	Images []ImagePayload
 }
-
-// TextPromptGenerator builds prompts for lyric and recipe generation.
-type TextPromptGenerator interface {
-	GenerateLyrics(mode string, input string) (string, error)
-	GenerateRecipe(mode string, lyrics *LyricsDraft) (string, error)
-}
-
-// PromptGenerator is kept as a compatibility alias for TextPromptGenerator.
-type PromptGenerator = TextPromptGenerator
-
-// AudioPromptBuilder builds prompts for Lyria audio generation.
-type AudioPromptBuilder interface {
-	BuildFullSong(recipe *MusicRecipe) string
-	BuildSection(recipe *MusicRecipe, section MusicSection) string
-}

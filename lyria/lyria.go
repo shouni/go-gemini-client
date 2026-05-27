@@ -12,9 +12,9 @@ import (
 
 // Adapter は、歌詞生成・作曲・音声生成を束ねるファサードです。
 type Adapter struct {
-	lyricist *lyriaTextGenerator
-	composer *lyriaTextGenerator
-	audio    *lyriaAudioGenerator
+	lyricist Lyricist
+	composer Composer
+	audio    AudioGenerator
 }
 
 // NewAdapter は、指定された構成を使用して新しい Adapter を初期化して返します。
