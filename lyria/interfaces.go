@@ -2,8 +2,8 @@ package lyria
 
 import "context"
 
-// MusicRunner は音楽生成のコアプロセス（作詞〜音声生成）を一括で行うインターフェースです。
-type MusicRunner interface {
+// MusicWorkflow は音楽生成のコアプロセス（作詞〜音声生成）を一括で行うインターフェースです。
+type MusicWorkflow interface {
 	// Run はコンテキストを受け取り、最終的な音声バイナリとレシピ（メタデータ）を返します。
 	Run(ctx context.Context, ai AIModels, input *CollectedContent) (*MusicRecipe, []byte, error)
 }

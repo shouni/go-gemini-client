@@ -39,7 +39,7 @@
 
 ### 🎼 Lyria ワークフロー (`lyria`)
 
-- **作詞から音声生成までの統合**: 歌詞生成、作曲レシピ生成、Lyria 音声生成を `Adapter` で一括実行できます。
+- **作詞から音声生成までの統合**: 歌詞生成、作曲レシピ生成、Lyria 音声生成を `Workflow` で一括実行できます。
 - **セクション別生成**: 曲のセクションごとに音声を生成し、WAV として結合できます。
 - **重複呼び出し抑制**: singleflight により、同一条件の音声生成リクエストをまとめます。
 
@@ -184,12 +184,12 @@ resp, err := client.GenerateWithParts(ctx, "gemini-2.5-flash", []*genai.Part{
 
 ---
 
-## 🎵 Lyria Adapter
+## 🎵 Lyria Workflow
 
 `lyria` パッケージは、歌詞生成・作曲レシピ生成・Lyria 音声生成を束ねるファサードです。利用側で `TextPromptGenerator` と `AudioPromptBuilder` を実装し、プロダクト固有のプロンプト設計を差し込めます。
 
 ```go
-adapter, err := lyria.NewAdapter(
+workflow, err := lyria.New(
 	client,
 	promptGenerator,
 	lyria.WithGeminiModel("gemini-2.5-flash"),
@@ -201,7 +201,7 @@ if err != nil {
 	return err
 }
 
-recipe, wavBytes, err := adapter.Run(ctx, lyria.AIModels{}, &lyria.CollectedContent{
+recipe, wavBytes, err := workflow.Run(ctx, lyria.AIModels{}, &lyria.CollectedContent{
 	Prompt: "夜の東京を走るシンセポップ",
 })
 ```

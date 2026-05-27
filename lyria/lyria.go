@@ -10,15 +10,15 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// Adapter は、歌詞生成・作曲・音声生成を束ねるファサードです。
-type Adapter struct {
+// Workflow は、歌詞生成・作曲・音声生成を束ねるファサードです。
+type Workflow struct {
 	lyricist Lyricist
 	composer Composer
 	audio    AudioGenerator
 }
 
-// NewAdapter は、指定された構成を使用して新しい Adapter を初期化して返します。
-func NewAdapter(aiClient gemini.Generator, promptGen TextPromptGenerator, overrides ...Option) (*Adapter, error) {
+// New は、指定された構成を使用して新しい Workflow を初期化して返します。
+func New(aiClient gemini.Generator, promptGen TextPromptGenerator, overrides ...Option) (*Workflow, error) {
 	opts := applyOptions(overrides...)
 	if aiClient == nil {
 		return nil, errors.New("aiClient is required")
@@ -50,7 +50,7 @@ func NewAdapter(aiClient gemini.Generator, promptGen TextPromptGenerator, overri
 		defaultModel: opts.geminiModel,
 	}
 
-	return &Adapter{
+	return &Workflow{
 		lyricist: textGenerator,
 		composer: textGenerator,
 		audio: &lyriaAudioGenerator{
@@ -65,18 +65,18 @@ func NewAdapter(aiClient gemini.Generator, promptGen TextPromptGenerator, overri
 }
 
 // Run は音楽生成のコアプロセス（作詞〜音声生成）を一括で行います。
-func (a *Adapter) Run(ctx context.Context, ai AIModels, input *CollectedContent) (*MusicRecipe, []byte, error) {
-	lyrics, err := a.GenerateLyrics(ctx, ai, input)
+func (w *Workflow) Run(ctx context.Context, ai AIModels, input *CollectedContent) (*MusicRecipe, []byte, error) {
+	lyrics, err := w.GenerateLyrics(ctx, ai, input)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	recipe, err := a.Compose(ctx, ai, lyrics)
+	recipe, err := w.Compose(ctx, ai, lyrics)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	wav, err := a.GenerateAudio(ctx, recipe, input.Images)
+	wav, err := w.GenerateAudio(ctx, recipe, input.Images)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -85,21 +85,21 @@ func (a *Adapter) Run(ctx context.Context, ai AIModels, input *CollectedContent)
 }
 
 // GenerateLyrics builds a lyric draft from collected content.
-func (a *Adapter) GenerateLyrics(ctx context.Context, ai AIModels, input *CollectedContent) (*LyricsDraft, error) {
-	return a.lyricist.GenerateLyrics(ctx, ai, input)
+func (w *Workflow) GenerateLyrics(ctx context.Context, ai AIModels, input *CollectedContent) (*LyricsDraft, error) {
+	return w.lyricist.GenerateLyrics(ctx, ai, input)
 }
 
 // Compose builds a music recipe from a lyric draft.
-func (a *Adapter) Compose(ctx context.Context, ai AIModels, lyrics *LyricsDraft) (*MusicRecipe, error) {
-	return a.composer.Compose(ctx, ai, lyrics)
+func (w *Workflow) Compose(ctx context.Context, ai AIModels, lyrics *LyricsDraft) (*MusicRecipe, error) {
+	return w.composer.Compose(ctx, ai, lyrics)
 }
 
 // GenerateAudio generates full-song audio from a music recipe.
-func (a *Adapter) GenerateAudio(ctx context.Context, recipe *MusicRecipe, images []ImagePayload) ([]byte, error) {
-	return a.audio.GenerateAudio(ctx, recipe, images)
+func (w *Workflow) GenerateAudio(ctx context.Context, recipe *MusicRecipe, images []ImagePayload) ([]byte, error) {
+	return w.audio.GenerateAudio(ctx, recipe, images)
 }
 
 // GenerateFullAudio generates each section separately and combines the audio.
-func (a *Adapter) GenerateFullAudio(ctx context.Context, recipe *MusicRecipe, images []ImagePayload) ([]byte, error) {
-	return a.audio.GenerateFullAudio(ctx, recipe, images)
+func (w *Workflow) GenerateFullAudio(ctx context.Context, recipe *MusicRecipe, images []ImagePayload) ([]byte, error) {
+	return w.audio.GenerateFullAudio(ctx, recipe, images)
 }
