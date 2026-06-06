@@ -3,11 +3,11 @@ package lyria
 import "time"
 
 type options struct {
-	geminiModel        string
-	lyriaModel         string
-	rateInterval       time.Duration
-	maxConcurrency     int
-	audioPromptBuilder AudioPromptBuilder
+	geminiModel      string
+	lyriaModel       string
+	rateInterval     time.Duration
+	maxConcurrency   int
+	readingConverter ReadingConverter
 }
 
 // Option configures Adapter.
@@ -27,10 +27,10 @@ func WithLyriaModel(value string) Option {
 	}
 }
 
-// WithAudioPromptBuilder injects a custom builder for Lyria audio prompts.
-func WithAudioPromptBuilder(builder AudioPromptBuilder) Option {
+// WithReadingConverter injects a custom converter for Lyria audio prompts.
+func WithReadingConverter(converter ReadingConverter) Option {
 	return func(opts *options) {
-		opts.audioPromptBuilder = builder
+		opts.readingConverter = converter
 	}
 }
 

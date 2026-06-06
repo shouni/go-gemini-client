@@ -18,7 +18,7 @@ type Workflow struct {
 }
 
 // New は、指定された構成を使用して新しい Workflow を初期化して返します。
-func New(aiClient gemini.Generator, promptGen TextPromptGenerator, overrides ...Option) (*Workflow, error) {
+func New(aiClient gemini.Generator, promptGen TextPromptGenerator, audioPromptBuilder AudioPromptBuilder, overrides ...Option) (*Workflow, error) {
 	opts := applyOptions(overrides...)
 	if aiClient == nil {
 		return nil, errors.New("aiClient is required")
@@ -26,22 +26,25 @@ func New(aiClient gemini.Generator, promptGen TextPromptGenerator, overrides ...
 	if promptGen == nil {
 		return nil, errors.New("promptGen is required")
 	}
+	if audioPromptBuilder == nil {
+		return nil, errors.New("audioPromptBuilder is required")
+	}
 	if opts.geminiModel == "" {
 		return nil, errors.New("GeminiModel is required but not set")
 	}
 	if opts.lyriaModel == "" {
 		return nil, errors.New("LyriaModel is required but not set")
 	}
-	promptBuilder := opts.audioPromptBuilder
-	if promptBuilder == nil {
-		return nil, errors.New("AudioPromptBuilder is required but not set")
-	}
 
 	limiter := rate.NewLimiter(rate.Every(opts.rateInterval), 1)
 
-	converter, err := phonetic.NewConverter()
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize phonetic converter: %w", err)
+	converter := opts.readingConverter
+	if converter == nil {
+		var err error
+		converter, err = phonetic.NewConverter()
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize phonetic converter: %w", err)
+		}
 	}
 
 	textGenerator := &lyriaTextGenerator{
@@ -55,7 +58,7 @@ func New(aiClient gemini.Generator, promptGen TextPromptGenerator, overrides ...
 		composer: textGenerator,
 		audio: &lyriaAudioGenerator{
 			aiClient:          aiClient,
-			promptBuilder:     promptBuilder,
+			promptBuilder:     audioPromptBuilder,
 			converter:         converter,
 			limiter:           limiter,
 			maxConcurrency:    opts.maxConcurrency,
