@@ -13,15 +13,11 @@ import (
 	"google.golang.org/genai"
 )
 
-type phoneticConverter interface {
-	ConvertToReading(input string) string
-}
-
 // lyriaAudioGenerator は MusicRecipe を Lyria に渡し、音声バイナリを生成します。
 type lyriaAudioGenerator struct {
 	aiClient          gemini.Generator
 	promptBuilder     AudioPromptBuilder
-	converter         phoneticConverter
+	converter         ReadingConverter
 	defaultLyriaModel string
 	limiter           *rate.Limiter
 	maxConcurrency    int

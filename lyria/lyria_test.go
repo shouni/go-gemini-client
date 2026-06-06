@@ -48,6 +48,14 @@ func (noopPhoneticConverter) ConvertToReading(input string) string {
 	return input
 }
 
+type fixedReadingConverter struct {
+	output string
+}
+
+func (c fixedReadingConverter) ConvertToReading(string) string {
+	return c.output
+}
+
 type fixedAudioPromptBuilder struct {
 	fullSong string
 	section  string
@@ -218,16 +226,15 @@ func TestWorkflow_Compose(t *testing.T) {
 	mAI.AssertExpectations(t)
 }
 
-func TestNewUsesInjectedAudioPromptBuilder(t *testing.T) {
+func TestNewUsesAudioPromptBuilder(t *testing.T) {
 	ctx := context.Background()
 	mAI := new(MockGeminiClient)
 	mPrompt := new(MockPromptGen)
 
-	workflow, err := New(mAI, mPrompt,
+	workflow, err := New(mAI, mPrompt, fixedAudioPromptBuilder{fullSong: "custom full prompt"},
 		WithGeminiModel("gemini-flash"),
 		WithLyriaModel("lyria-3"),
 		WithRateInterval(0),
-		WithAudioPromptBuilder(fixedAudioPromptBuilder{fullSong: "custom full prompt"}),
 	)
 	assert.NoError(t, err)
 
@@ -235,6 +242,33 @@ func TestNewUsesInjectedAudioPromptBuilder(t *testing.T) {
 		mock.Anything,
 		"lyria-3",
 		partsWithText(t, "custom full prompt"),
+		mock.Anything,
+	).Return(&gemini.Response{Audios: [][]byte{{1, 2, 3}}}, nil)
+
+	audio, err := workflow.GenerateAudio(ctx, &MusicRecipe{Title: "Song"}, nil)
+
+	assert.NoError(t, err)
+	assert.Equal(t, []byte{1, 2, 3}, audio)
+	mAI.AssertExpectations(t)
+}
+
+func TestNewUsesReadingConverterOption(t *testing.T) {
+	ctx := context.Background()
+	mAI := new(MockGeminiClient)
+	mPrompt := new(MockPromptGen)
+
+	workflow, err := New(mAI, mPrompt, fixedAudioPromptBuilder{fullSong: "漢字 prompt"},
+		WithGeminiModel("gemini-flash"),
+		WithLyriaModel("lyria-3"),
+		WithRateInterval(0),
+		WithReadingConverter(fixedReadingConverter{output: "converted prompt"}),
+	)
+	assert.NoError(t, err)
+
+	mAI.On("GenerateWithParts",
+		mock.Anything,
+		"lyria-3",
+		partsWithText(t, "converted prompt"),
 		mock.Anything,
 	).Return(&gemini.Response{Audios: [][]byte{{1, 2, 3}}}, nil)
 

@@ -30,11 +30,13 @@ type TextPromptGenerator interface {
 	GenerateRecipe(mode string, lyrics *LyricsDraft) (string, error)
 }
 
-// PromptGenerator は TextPromptGenerator の互換性維持のためのエイリアスです。
-type PromptGenerator = TextPromptGenerator
-
 // AudioPromptBuilder は Lyria の音声生成用プロンプトを構築するインターフェースです。
 type AudioPromptBuilder interface {
 	BuildFullSong(recipe *MusicRecipe) string
 	BuildSection(recipe *MusicRecipe, section MusicSection) string
+}
+
+// ReadingConverter は Lyria に渡すプロンプトを読み上げ向けの表記に変換します。
+type ReadingConverter interface {
+	ConvertToReading(input string) string
 }

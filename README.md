@@ -192,9 +192,9 @@ resp, err := client.GenerateWithParts(ctx, "gemini-2.5-flash", []*genai.Part{
 workflow, err := lyria.New(
 	client,
 	promptGenerator,
+	audioPromptBuilder,
 	lyria.WithGeminiModel("gemini-2.5-flash"),
 	lyria.WithLyriaModel("lyria-realtime-exp"),
-	lyria.WithAudioPromptBuilder(audioPromptBuilder),
 	lyria.WithMaxConcurrency(2),
 )
 if err != nil {
