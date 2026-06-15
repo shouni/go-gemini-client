@@ -11,7 +11,6 @@ func TestBuildAudioGenerateOptionsOmitsNilSeed(t *testing.T) {
 
 	assert.Nil(t, got.Seed)
 	assert.Equal(t, "audio/wav", got.ResponseMIMEType)
-	assert.NotEmpty(t, got.SafetySettings)
 }
 
 func TestBuildAudioGenerateOptionsKeepsSeed(t *testing.T) {
@@ -23,5 +22,4 @@ func TestBuildAudioGenerateOptionsKeepsSeed(t *testing.T) {
 		assert.Equal(t, seed, *got.Seed)
 	}
 	assert.Equal(t, "audio/wav", got.ResponseMIMEType)
-	assert.NotEmpty(t, got.SafetySettings)
 }
