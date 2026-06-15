@@ -89,6 +89,19 @@ func jsonGenerateOptionsWithSeed(t *testing.T, wantSeed *int64) interface{} {
 	})
 }
 
+func audioGenerateOptionsWithSeed(t *testing.T, wantSeed *int64, wantMIMEType string) interface{} {
+	t.Helper()
+	return mock.MatchedBy(func(opts gemini.GenerateOptions) bool {
+		if opts.ResponseMIMEType != wantMIMEType {
+			return false
+		}
+		if wantSeed == nil {
+			return opts.Seed == nil
+		}
+		return opts.Seed != nil && *opts.Seed == *wantSeed
+	})
+}
+
 // GenerateLyrics に mode 引数を追加
 func (m *MockPromptGen) GenerateLyrics(mode string, input string) (string, error) {
 	args := m.Called(mode, input)
@@ -167,6 +180,7 @@ func TestWorkflow_Run(t *testing.T) {
 	}, nil)
 
 	// 3. 音声生成実行
+	mAI.On("IsVertexAI").Return(false).Once()
 	mAI.On("GenerateWithParts", mock.Anything, "lyria-custom-v1", mock.Anything, mock.Anything).Return(&gemini.Response{
 		Audios: [][]byte{fakeWav},
 	}, nil)
@@ -273,6 +287,33 @@ func TestNewUsesReadingConverterOption(t *testing.T) {
 	).Return(&gemini.Response{Audios: [][]byte{{1, 2, 3}}}, nil)
 
 	audio, err := workflow.GenerateAudio(ctx, &MusicRecipe{Title: "Song"}, nil)
+
+	assert.NoError(t, err)
+	assert.Equal(t, []byte{1, 2, 3}, audio)
+	mAI.AssertExpectations(t)
+}
+
+func TestGenerateAudioOmitsSeedForVertexAI(t *testing.T) {
+	ctx := context.Background()
+	mAI := new(MockGeminiClient)
+	seed := int64(42)
+	generator := &lyriaAudioGenerator{
+		aiClient:          mAI,
+		promptBuilder:     fixedAudioPromptBuilder{fullSong: "full prompt"},
+		converter:         noopPhoneticConverter{},
+		defaultLyriaModel: "lyria-3",
+		limiter:           rate.NewLimiter(rate.Inf, 0),
+	}
+
+	mAI.On("IsVertexAI").Return(true).Once()
+	mAI.On("GenerateWithParts",
+		mock.Anything,
+		"lyria-3",
+		partsWithText(t, "full prompt"),
+		audioGenerateOptionsWithSeed(t, nil, ""),
+	).Return(&gemini.Response{Audios: [][]byte{{1, 2, 3}}}, nil)
+
+	audio, err := generator.GenerateAudio(ctx, &MusicRecipe{Title: "Song", AIModels: AIModels{Seed: &seed}}, nil)
 
 	assert.NoError(t, err)
 	assert.Equal(t, []byte{1, 2, 3}, audio)
