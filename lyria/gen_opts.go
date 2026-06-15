@@ -18,7 +18,7 @@ func buildAudioGenerateOptions(seed *int64, mimeType string) gemini.GenerateOpti
 // buildBaseOptions は AP Comp 全体で共通の安全設定やシード値を適用したベースオプションを構築します。
 func buildBaseOptions(seed *int64, mimeType string) gemini.GenerateOptions {
 	opts := gemini.GenerateOptions{
-		SafetySettings: buildSafetySettings(),
+		//		SafetySettings: buildSafetySettings(),
 	}
 	if seed != nil {
 		opts.Seed = seed
