@@ -38,8 +38,8 @@ type MusicRecipe struct {
 type MusicSection struct {
 	Name         string `json:"name"`
 	Duration     int    `json:"duration_seconds"`
-	StartSeconds int    `json:"start_seconds,omitempty"`
-	EndSeconds   int    `json:"end_seconds,omitempty"`
+	StartSeconds int    `json:"start_seconds"`
+	EndSeconds   int    `json:"end_seconds"`
 	Prompt       string `json:"prompt"`
 }
 
