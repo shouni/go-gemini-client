@@ -219,7 +219,22 @@ func TestWorkflow_Compose(t *testing.T) {
 	lyrics := &LyricsDraft{Title: "Lofi Beats", Lyrics: "Chill vibes only"}
 	mode := "lofi"
 	expectedPrompt := "Build me a lofi recipe"
-	rawJSON := `{"title": "Lofi Chill", "tempo": 70, "mood": "relaxed"}`
+	rawJSON := `{
+		"title": "Lofi Chill",
+		"tempo": 70,
+		"mood": "relaxed",
+		"key": "D minor",
+		"vocal_profile": "Japanese female vocal, clear diction",
+		"sections": [
+			{
+				"name": "Verse",
+				"duration_seconds": 30,
+				"start_seconds": 0,
+				"end_seconds": 30,
+				"prompt": "soft opening groove"
+			}
+		]
+	}`
 
 	mPrompt.On("GenerateRecipe", mode, lyrics).Return(expectedPrompt, nil)
 	mAI.On("GenerateWithParts", mock.Anything, "gemini-flash", partsWithText(t, expectedPrompt), jsonGenerateOptionsWithSeed(t, nil)).Return(&gemini.Response{
@@ -235,6 +250,12 @@ func TestWorkflow_Compose(t *testing.T) {
 	assert.NotNil(t, recipe)
 	assert.Equal(t, 70, recipe.Tempo)
 	assert.Equal(t, "Lofi Chill", recipe.Title)
+	assert.Equal(t, "D minor", recipe.Key)
+	assert.Equal(t, "Japanese female vocal, clear diction", recipe.VocalProfile)
+	if assert.Len(t, recipe.Sections, 1) {
+		assert.Equal(t, 0, recipe.Sections[0].StartSeconds)
+		assert.Equal(t, 30, recipe.Sections[0].EndSeconds)
+	}
 
 	mPrompt.AssertExpectations(t)
 	mAI.AssertExpectations(t)
