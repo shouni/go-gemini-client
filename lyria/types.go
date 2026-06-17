@@ -22,21 +22,25 @@ type LyricsDraft struct {
 
 // MusicRecipe describes the song structure and generation settings.
 type MusicRecipe struct {
-	Title       string         `json:"title"`
-	Theme       string         `json:"theme"`
-	Mood        string         `json:"mood"`
-	Tempo       int            `json:"tempo"`
-	Instruments []string       `json:"instruments"`
-	Sections    []MusicSection `json:"sections"`
-	Lyrics      *LyricsDraft   `json:"lyrics,omitempty"`
+	Title        string         `json:"title"`
+	Theme        string         `json:"theme"`
+	Mood         string         `json:"mood"`
+	Tempo        int            `json:"tempo"`
+	Key          string         `json:"key,omitempty"`
+	VocalProfile string         `json:"vocal_profile,omitempty"`
+	Instruments  []string       `json:"instruments"`
+	Sections     []MusicSection `json:"sections"`
+	Lyrics       *LyricsDraft   `json:"lyrics,omitempty"`
 	AIModels
 }
 
 // MusicSection describes one section of a song.
 type MusicSection struct {
-	Name     string `json:"name"`
-	Duration int    `json:"duration_seconds"`
-	Prompt   string `json:"prompt"`
+	Name         string `json:"name"`
+	Duration     int    `json:"duration_seconds"`
+	StartSeconds int    `json:"start_seconds,omitempty"`
+	EndSeconds   int    `json:"end_seconds,omitempty"`
+	Prompt       string `json:"prompt"`
 }
 
 // ImagePayload is an optional multimodal image input for audio generation.

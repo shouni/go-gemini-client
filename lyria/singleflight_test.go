@@ -140,10 +140,12 @@ func TestCloneMusicRecipeDeepCopiesPointerFields(t *testing.T) {
 
 	seed := int64(7)
 	src := &MusicRecipe{
-		Title:       "Song",
-		Instruments: []string{"synth"},
+		Title:        "Song",
+		Key:          "A minor",
+		VocalProfile: "Japanese female vocal, clear diction",
+		Instruments:  []string{"synth"},
 		Sections: []MusicSection{
-			{Name: "Verse", Duration: 30, Prompt: "pulse"},
+			{Name: "Verse", Duration: 30, StartSeconds: 10, EndSeconds: 40, Prompt: "pulse"},
 		},
 		Lyrics: &LyricsDraft{
 			Lyrics:   "words",
@@ -164,6 +166,12 @@ func TestCloneMusicRecipeDeepCopiesPointerFields(t *testing.T) {
 
 	assert.Equal(t, "one", cloned.Lyrics.Keywords[0])
 	assert.Equal(t, int64(7), *cloned.AIModels.Seed)
+	assert.Equal(t, "A minor", cloned.Key)
+	assert.Equal(t, "Japanese female vocal, clear diction", cloned.VocalProfile)
+	if assert.Len(t, cloned.Sections, 1) {
+		assert.Equal(t, 10, cloned.Sections[0].StartSeconds)
+		assert.Equal(t, 40, cloned.Sections[0].EndSeconds)
+	}
 }
 
 func TestLyriaAudioGeneratorSingleflightDeduplicatesConcurrentCalls(t *testing.T) {
