@@ -10,11 +10,16 @@ import (
 )
 
 type fakeModelClient struct {
-	calls     int
-	gotModel  string
-	gotConfig *genai.GenerateContentConfig
-	resp      *genai.GenerateContentResponse
-	err       error
+	calls              int
+	editCalls          int
+	gotModel           string
+	gotPrompt          string
+	gotConfig          *genai.GenerateContentConfig
+	gotEditConfig      *genai.EditImageConfig
+	gotReferenceImages []genai.ReferenceImage
+	resp               *genai.GenerateContentResponse
+	editResp           *genai.EditImageResponse
+	err                error
 }
 
 func (f *fakeModelClient) GenerateContent(ctx context.Context, model string, contents []*genai.Content, config *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error) {
@@ -37,6 +42,21 @@ func (f *fakeModelClient) GenerateContent(ctx context.Context, model string, con
 			},
 		},
 	}, nil
+}
+
+func (f *fakeModelClient) EditImage(ctx context.Context, model string, prompt string, referenceImages []genai.ReferenceImage, config *genai.EditImageConfig) (*genai.EditImageResponse, error) {
+	f.editCalls++
+	f.gotModel = model
+	f.gotPrompt = prompt
+	f.gotReferenceImages = referenceImages
+	f.gotEditConfig = config
+	if f.err != nil {
+		return nil, f.err
+	}
+	if f.editResp != nil {
+		return f.editResp, nil
+	}
+	return &genai.EditImageResponse{}, nil
 }
 
 func TestNewClient(t *testing.T) {
@@ -181,6 +201,95 @@ func TestGenerateWithParts_Validation(t *testing.T) {
 				t.Fatalf("GenerateWithParts() error = %v, want %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestEditImage_Validation(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name      string
+		client    *Client
+		modelName string
+		prompt    string
+		wantErr   error
+	}{
+		{
+			name:      "モデル名が空",
+			client:    &Client{backend: genai.BackendVertexAI},
+			modelName: "",
+			prompt:    "edit",
+			wantErr:   ErrEmptyModelName,
+		},
+		{
+			name:      "プロンプトが空",
+			client:    &Client{backend: genai.BackendVertexAI},
+			modelName: "imagen-edit",
+			prompt:    "",
+			wantErr:   ErrEmptyPrompt,
+		},
+		{
+			name:      "Gemini API backend は非対応",
+			client:    &Client{backend: genai.BackendGeminiAPI},
+			modelName: "imagen-edit",
+			prompt:    "edit",
+			wantErr:   ErrUnsupportedBackend,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := tt.client.EditImage(ctx, tt.modelName, tt.prompt, nil, nil)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("EditImage() error = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestEditImage_CallsSDKInVertexAI(t *testing.T) {
+	ctx := context.Background()
+	fake := &fakeModelClient{
+		editResp: &genai.EditImageResponse{
+			GeneratedImages: []*genai.GeneratedImage{{}},
+		},
+	}
+	cfg := &genai.EditImageConfig{
+		NumberOfImages: 1,
+		AspectRatio:    "1:1",
+	}
+	referenceImages := []genai.ReferenceImage{
+		genai.NewRawReferenceImage(nil, 1),
+		genai.NewMaskReferenceImage(nil, 2, nil),
+	}
+	c := &Client{
+		modelClient: fake,
+		backend:     genai.BackendVertexAI,
+		retryConfig: Config{
+			MaxRetries:   1,
+			InitialDelay: time.Nanosecond,
+			MaxDelay:     time.Nanosecond,
+		}.buildRetryConfig(),
+	}
+
+	resp, err := c.EditImage(ctx, "imagen-edit", "replace the background", referenceImages, cfg)
+	if err != nil {
+		t.Fatalf("EditImage() unexpected error = %v", err)
+	}
+	if resp != fake.editResp {
+		t.Fatal("EditImage() did not return SDK response")
+	}
+	if fake.editCalls != 1 {
+		t.Fatalf("EditImage() calls = %d, want 1", fake.editCalls)
+	}
+	if fake.gotModel != "imagen-edit" || fake.gotPrompt != "replace the background" {
+		t.Fatalf("EditImage() forwarded model/prompt incorrectly: model=%q prompt=%q", fake.gotModel, fake.gotPrompt)
+	}
+	if fake.gotEditConfig != cfg {
+		t.Fatal("EditImage() did not forward config")
+	}
+	if len(fake.gotReferenceImages) != 2 || fake.gotReferenceImages[0] != referenceImages[0] || fake.gotReferenceImages[1] != referenceImages[1] {
+		t.Fatalf("EditImage() did not forward reference images: %+v", fake.gotReferenceImages)
 	}
 }
 

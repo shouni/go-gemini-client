@@ -72,6 +72,15 @@ func (c *Client) GenerateWithParts(ctx context.Context, modelName string, parts 
 	return c.generate(ctx, modelName, contents, genConfig)
 }
 
+// EditImage は Vertex AI の画像編集 API を呼び出します。
+func (c *Client) EditImage(ctx context.Context, modelName string, prompt string, referenceImages []genai.ReferenceImage, config *genai.EditImageConfig) (*genai.EditImageResponse, error) {
+	if err := c.validateEditImageInput(modelName, prompt); err != nil {
+		return nil, err
+	}
+
+	return c.editImage(ctx, modelName, prompt, referenceImages, config)
+}
+
 func validateGenerateInput(modelName string, parts []*genai.Part) error {
 	if modelName == "" {
 		return ErrEmptyModelName
@@ -83,6 +92,19 @@ func validateGenerateInput(modelName string, parts []*genai.Part) error {
 		if part == nil {
 			return ErrInvalidPart
 		}
+	}
+	return nil
+}
+
+func (c *Client) validateEditImageInput(modelName string, prompt string) error {
+	if modelName == "" {
+		return ErrEmptyModelName
+	}
+	if prompt == "" {
+		return ErrEmptyPrompt
+	}
+	if !c.IsVertexAI() {
+		return ErrUnsupportedBackend
 	}
 	return nil
 }
@@ -179,6 +201,26 @@ func (c *Client) generate(ctx context.Context, modelName string, contents []*gen
 	}
 
 	err := retry.Do(ctx, c.retryConfig, fmt.Sprintf("Gemini API 呼び出し（モデル: %s）", modelName), op, shouldRetry)
+	if err != nil {
+		return nil, err
+	}
+
+	return finalResp, nil
+}
+
+func (c *Client) editImage(ctx context.Context, modelName string, prompt string, referenceImages []genai.ReferenceImage, config *genai.EditImageConfig) (*genai.EditImageResponse, error) {
+	var finalResp *genai.EditImageResponse
+
+	op := func() error {
+		resp, err := c.modelClient.EditImage(ctx, modelName, prompt, referenceImages, config)
+		if err != nil {
+			return err
+		}
+		finalResp = resp
+		return nil
+	}
+
+	err := retry.Do(ctx, c.retryConfig, fmt.Sprintf("Gemini 画像編集 API 呼び出し（モデル: %s）", modelName), op, shouldRetry)
 	if err != nil {
 		return nil, err
 	}
