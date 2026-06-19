@@ -74,7 +74,7 @@ func (c *Client) GenerateWithParts(ctx context.Context, modelName string, parts 
 
 // EditImage は Vertex AI の画像編集 API を呼び出します。
 func (c *Client) EditImage(ctx context.Context, modelName string, prompt string, referenceImages []genai.ReferenceImage, config *genai.EditImageConfig) (*genai.EditImageResponse, error) {
-	if err := c.validateEditImageInput(modelName, prompt); err != nil {
+	if err := c.validateEditImageInput(modelName, prompt, referenceImages); err != nil {
 		return nil, err
 	}
 
@@ -96,12 +96,20 @@ func validateGenerateInput(modelName string, parts []*genai.Part) error {
 	return nil
 }
 
-func (c *Client) validateEditImageInput(modelName string, prompt string) error {
+func (c *Client) validateEditImageInput(modelName string, prompt string, referenceImages []genai.ReferenceImage) error {
 	if modelName == "" {
 		return ErrEmptyModelName
 	}
 	if prompt == "" {
 		return ErrEmptyPrompt
+	}
+	if len(referenceImages) == 0 {
+		return ErrEmptyReferenceImages
+	}
+	for _, ref := range referenceImages {
+		if ref == nil {
+			return ErrInvalidReferenceImage
+		}
 	}
 	if !c.IsVertexAI() {
 		return ErrUnsupportedBackend

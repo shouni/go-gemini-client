@@ -295,6 +295,8 @@ recipe, wavBytes, err := workflow.Run(ctx, lyria.AIModels{}, &lyria.CollectedCon
 - `ErrEmptyParts`: 生成パーツが空の場合。
 - `ErrInvalidPart`: 生成パーツに nil が含まれている場合。
 - `ErrInvalidSeed`: `Seed` が `int32` の範囲外の場合。
+- `ErrEmptyReferenceImages`: 参照画像が空の場合。
+- `ErrInvalidReferenceImage`: 参照画像に nil が含まれている場合。
 - `ErrUnsupportedBackend`: 現在のバックエンドでは対象 API がサポートされていない場合。
 
 ---

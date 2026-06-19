@@ -208,38 +208,58 @@ func TestEditImage_Validation(t *testing.T) {
 	ctx := context.Background()
 
 	tests := []struct {
-		name      string
-		client    *Client
-		modelName string
-		prompt    string
-		wantErr   error
+		name            string
+		client          *Client
+		modelName       string
+		prompt          string
+		referenceImages []genai.ReferenceImage
+		wantErr         error
 	}{
 		{
-			name:      "モデル名が空",
-			client:    &Client{backend: genai.BackendVertexAI},
-			modelName: "",
-			prompt:    "edit",
-			wantErr:   ErrEmptyModelName,
+			name:            "モデル名が空",
+			client:          &Client{backend: genai.BackendVertexAI},
+			modelName:       "",
+			prompt:          "edit",
+			referenceImages: []genai.ReferenceImage{genai.NewRawReferenceImage(nil, 1)},
+			wantErr:         ErrEmptyModelName,
 		},
 		{
-			name:      "プロンプトが空",
-			client:    &Client{backend: genai.BackendVertexAI},
-			modelName: "imagen-edit",
-			prompt:    "",
-			wantErr:   ErrEmptyPrompt,
+			name:            "プロンプトが空",
+			client:          &Client{backend: genai.BackendVertexAI},
+			modelName:       "imagen-edit",
+			prompt:          "",
+			referenceImages: []genai.ReferenceImage{genai.NewRawReferenceImage(nil, 1)},
+			wantErr:         ErrEmptyPrompt,
 		},
 		{
-			name:      "Gemini API backend は非対応",
-			client:    &Client{backend: genai.BackendGeminiAPI},
-			modelName: "imagen-edit",
-			prompt:    "edit",
-			wantErr:   ErrUnsupportedBackend,
+			name:            "参照画像が空",
+			client:          &Client{backend: genai.BackendVertexAI},
+			modelName:       "imagen-edit",
+			prompt:          "edit",
+			referenceImages: nil,
+			wantErr:         ErrEmptyReferenceImages,
+		},
+		{
+			name:            "参照画像に nil を含む",
+			client:          &Client{backend: genai.BackendVertexAI},
+			modelName:       "imagen-edit",
+			prompt:          "edit",
+			referenceImages: []genai.ReferenceImage{nil},
+			wantErr:         ErrInvalidReferenceImage,
+		},
+		{
+			name:            "Gemini API backend は非対応",
+			client:          &Client{backend: genai.BackendGeminiAPI},
+			modelName:       "imagen-edit",
+			prompt:          "edit",
+			referenceImages: []genai.ReferenceImage{genai.NewRawReferenceImage(nil, 1)},
+			wantErr:         ErrUnsupportedBackend,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := tt.client.EditImage(ctx, tt.modelName, tt.prompt, nil, nil)
+			_, err := tt.client.EditImage(ctx, tt.modelName, tt.prompt, tt.referenceImages, nil)
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("EditImage() error = %v, want %v", err, tt.wantErr)
 			}
