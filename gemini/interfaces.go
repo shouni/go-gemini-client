@@ -19,6 +19,11 @@ type Generator interface {
 	IsVertexAI() bool
 }
 
+// ImageEditor は、画像編集 API を扱うインターフェースです。
+type ImageEditor interface {
+	EditImage(ctx context.Context, modelName string, prompt string, referenceImages []genai.ReferenceImage, config *genai.EditImageConfig) (*genai.EditImageResponse, error)
+}
+
 // FileManager は、Gemini API で使用するファイルのアップロードおよび管理を担います。
 type FileManager interface {
 	UploadFile(ctx context.Context, r io.Reader, mimeType, displayName string) (string, string, error)
@@ -29,4 +34,5 @@ type FileManager interface {
 type GenerativeModel interface {
 	Generator
 	FileManager
+	ImageEditor
 }

@@ -12,7 +12,7 @@
 
 **Go Gemini Client** は、[shouni/netarmor](https://github.com/shouni/netarmor) をリトライ基盤に採用した、**Google Gemini API / Vertex AI** 向けの Go ライブラリです。
 
-ひとつのクライアントで、API Key 方式の **Gemini API (Google AI Studio)** と、Google Cloud 認証を使う **Vertex AI** を切り替えて利用できます。テキスト生成だけでなく、GCS URI や File API を使ったマルチモーダル入力、画像・音声レスポンス、Lyria による音楽生成ワークフローも扱えるように設計されています。
+ひとつのクライアントで、API Key 方式の **Gemini API (Google AI Studio)** と、Google Cloud 認証を使う **Vertex AI** を切り替えて利用できます。テキスト生成だけでなく、GCS URI や File API を使ったマルチモーダル入力、画像・音声レスポンス、Vertex AI 画像編集、Lyria による音楽生成ワークフローも扱えるように設計されています。
 
 ---
 
@@ -36,6 +36,7 @@
 - **File API サポート**: ファイルアップロード後、利用可能な `Active` 状態になるまで自動でポーリングします。
 - **自動クリーンアップ**: Active 化に失敗した File API オブジェクトはバックグラウンドで削除を試みます。
 - **レスポンス抽出**: テキスト、生成画像、生成音声を `gemini.Response` にまとめて返します。
+- **画像編集 API**: Vertex AI の `EditImage` / `ReferenceImage` / `EditImageConfig` を薄く公開し、マスク画像や編集元画像を SDK の意味論のまま扱えます。
 
 ### 🎼 Lyria ワークフロー (`lyria`)
 
@@ -154,6 +155,49 @@ if len(resp.Images) > 0 {
 
 ---
 
+## 🖌️ Vertex AI 画像編集
+
+`EditImage` は Vertex AI の画像編集 API を薄くラップします。編集元画像やマスク画像は通常の `genai.Part` ではなく、SDK の `genai.ReferenceImage` として渡します。
+
+Gemini API backend では `ErrUnsupportedBackend` を返します。
+
+```go
+source := &genai.Image{
+	GCSURI:   "gs://my-bucket/source.png",
+	MIMEType: "image/png",
+}
+mask := &genai.Image{
+	GCSURI:   "gs://my-bucket/mask.png",
+	MIMEType: "image/png",
+}
+
+resp, err := client.EditImage(
+	ctx,
+	"imagen-3.0-capability-001",
+	"背景を明るいスタジオ風に変更してください",
+	[]genai.ReferenceImage{
+		genai.NewRawReferenceImage(source, 1),
+		genai.NewMaskReferenceImage(mask, 2, &genai.MaskReferenceConfig{
+			MaskMode: genai.MaskReferenceModeMaskModeUserProvided,
+		}),
+	},
+	&genai.EditImageConfig{
+		NumberOfImages: 1,
+		AspectRatio:    "1:1",
+		OutputMIMEType: "image/png",
+	},
+)
+if err != nil {
+	return err
+}
+
+if len(resp.GeneratedImages) > 0 && resp.GeneratedImages[0].Image != nil {
+	// resp.GeneratedImages[0].Image.ImageBytes contains edited image bytes.
+}
+```
+
+---
+
 ## 📤 File API
 
 Gemini API の File API を使う場合は、アップロード後にファイルが `Active` になるまで自動で待機します。
@@ -251,6 +295,9 @@ recipe, wavBytes, err := workflow.Run(ctx, lyria.AIModels{}, &lyria.CollectedCon
 - `ErrEmptyParts`: 生成パーツが空の場合。
 - `ErrInvalidPart`: 生成パーツに nil が含まれている場合。
 - `ErrInvalidSeed`: `Seed` が `int32` の範囲外の場合。
+- `ErrEmptyReferenceImages`: 参照画像が空の場合。
+- `ErrInvalidReferenceImage`: 参照画像に nil が含まれている場合。
+- `ErrUnsupportedBackend`: 現在のバックエンドでは対象 API がサポートされていない場合。
 
 ---
 
@@ -258,7 +305,7 @@ recipe, wavBytes, err := workflow.Run(ctx, lyria.AIModels{}, &lyria.CollectedCon
 
 | パッケージ | 役割 |
 | --- | --- |
-| `github.com/shouni/go-gemini-client/gemini` | Gemini / Vertex AI クライアント、リトライ、File API、レスポンス抽出。 |
+| `github.com/shouni/go-gemini-client/gemini` | Gemini / Vertex AI クライアント、リトライ、File API、画像編集、レスポンス抽出。 |
 | `github.com/shouni/go-gemini-client/lyria` | 歌詞生成、作曲レシピ生成、Lyria 音声生成の統合アダプタ。 |
 
 ---
