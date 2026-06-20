@@ -41,7 +41,9 @@ func New(aiClient gemini.Generator, promptGen TextPromptGenerator, audioPromptBu
 	converter := opts.readingConverter
 	if converter == nil {
 		var err error
-		converter, err = phonetic.NewConverter()
+		converter, err = phonetic.NewConverter(
+			phonetic.WithPhraseSpacing(),
+		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize phonetic converter: %w", err)
 		}
