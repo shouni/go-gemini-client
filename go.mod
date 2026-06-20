@@ -3,7 +3,7 @@ module github.com/shouni/go-gemini-client
 go 1.26
 
 require (
-	github.com/shouni/audio v1.0.19
+	github.com/shouni/audio v1.0.20
 	github.com/shouni/netarmor v1.0.3
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/sync v0.21.0
