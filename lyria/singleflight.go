@@ -102,13 +102,12 @@ func cloneMusicRecipe(src *MusicRecipe) *MusicRecipe {
 	dst.Instruments = append([]string(nil), src.Instruments...)
 	if src.Sections != nil {
 		dst.Sections = make([]MusicSection, len(src.Sections))
-		for i, sec := range src.Sections {
-			dst.Sections[i] = sec
-		}
+		copy(dst.Sections, src.Sections)
 	}
 	dst.Lyrics = cloneLyricsDraft(src.Lyrics)
 	if src.AIModels.Seed != nil {
-		dst.AIModels.Seed = new(*src.AIModels.Seed)
+		v := *src.AIModels.Seed
+		dst.AIModels.Seed = &v
 	}
 	return &dst
 }

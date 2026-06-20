@@ -55,7 +55,7 @@ func shouldRetry(err error) bool {
 		return true
 	}
 	if netErr, ok := errors.AsType[net.Error](err); ok {
-		return netErr.Temporary() || netErr.Timeout()
+		return netErr.Timeout()
 	}
 
 	return false
