@@ -49,6 +49,16 @@ func TestCleanJSONResponse(t *testing.T) {
 			input: `prefix {broken json} suffix`,
 			want:  `prefix {broken json} suffix`,
 		},
+		{
+			name:  "missing closing brace replaced by paren",
+			input: "{\"title\":\"test\",\"narrative\":\"hello\")",
+			want:  `{"title":"test","narrative":"hello"}`,
+		},
+		{
+			name:  "missing closing brace with trailing whitespace",
+			input: "{\"title\":\"test\")\n",
+			want:  `{"title":"test"}`,
+		},
 	}
 
 	for _, tt := range tests {
