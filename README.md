@@ -41,7 +41,6 @@
 ### 🎼 Lyria ワークフロー (`lyria`)
 
 - **作詞から音声生成までの統合**: 歌詞生成、作曲レシピ生成、Lyria 音声生成を `Workflow` で一括実行できます。
-- **セクション別生成**: 曲のセクションごとに音声を生成し、WAV として結合できます。
 - **重複呼び出し抑制**: singleflight により、同一条件の音声生成リクエストをまとめます。
 
 ---
@@ -313,7 +312,6 @@ recipe, wavBytes, err := workflow.Run(ctx, lyria.AIModels{}, &lyria.CollectedCon
 
 - [google.golang.org/genai](https://pkg.go.dev/google.golang.org/genai) - Google Gemini 公式 SDK
 - [shouni/netarmor](https://github.com/shouni/netarmor) - ネットワークセキュリティ & リトライ戦略
-- [shouni/audio](https://github.com/shouni/audio) - WAV 結合・音声処理ユーティリティ
 
 ---
 
