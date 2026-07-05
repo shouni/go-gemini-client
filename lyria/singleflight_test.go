@@ -21,17 +21,17 @@ type staticPromptGen struct {
 }
 
 // GenerateLyrics は TextPromptGenerator インターフェースに合わせる
-func (g staticPromptGen) GenerateLyrics(mode string, prompt string) (string, error) {
+func (g staticPromptGen) GenerateLyrics(_ string, _ string) (string, error) {
 	return g.lyricsPrompt, nil
 }
 
 // GenerateRecipe も同様にインターフェースに合わせる
-func (g staticPromptGen) GenerateRecipe(mode string, lyrics *LyricsDraft) (string, error) {
+func (g staticPromptGen) GenerateRecipe(_ string, _ *LyricsDraft) (string, error) {
 	return g.recipePrompt, nil
 }
 
 // GenerateCoverArt も同様にインターフェースに合わせる
-func (g staticPromptGen) GenerateCoverArt(mode string, recipe *MusicRecipe) (string, error) {
+func (g staticPromptGen) GenerateCoverArt(_ string, _ *MusicRecipe) (string, error) {
 	return g.recipePrompt, nil
 }
 
@@ -157,15 +157,15 @@ func TestCloneMusicRecipeDeepCopiesPointerFields(t *testing.T) {
 	cloned := cloneMusicRecipe(src)
 	require.NotNil(t, cloned)
 	require.NotNil(t, cloned.Lyrics)
-	require.NotNil(t, cloned.AIModels.Seed)
+	require.NotNil(t, cloned.Seed)
 	require.NotSame(t, src.Lyrics, cloned.Lyrics)
-	require.NotSame(t, src.AIModels.Seed, cloned.AIModels.Seed)
+	require.NotSame(t, src.Seed, cloned.Seed)
 
 	src.Lyrics.Keywords[0] = "changed"
-	*src.AIModels.Seed = 99
+	*src.Seed = 99
 
 	assert.Equal(t, "one", cloned.Lyrics.Keywords[0])
-	assert.Equal(t, int64(7), *cloned.AIModels.Seed)
+	assert.Equal(t, int64(7), *cloned.Seed)
 	assert.Equal(t, "A minor", cloned.Key)
 	assert.Equal(t, "Japanese female vocal, clear diction", cloned.VocalProfile)
 	if assert.Len(t, cloned.Sections, 1) {

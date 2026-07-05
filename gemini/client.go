@@ -1,3 +1,5 @@
+// Package gemini は、Gemini API / Vertex AI 向けの genai SDK をラップし、
+// リトライやFile APIアップロードを備えたクライアントを提供します。
 package gemini
 
 import (

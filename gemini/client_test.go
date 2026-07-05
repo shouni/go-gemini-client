@@ -22,7 +22,7 @@ type fakeModelClient struct {
 	err                error
 }
 
-func (f *fakeModelClient) GenerateContent(ctx context.Context, model string, contents []*genai.Content, config *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error) {
+func (f *fakeModelClient) GenerateContent(_ context.Context, model string, _ []*genai.Content, config *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error) {
 	f.calls++
 	f.gotModel = model
 	f.gotConfig = config
@@ -44,7 +44,7 @@ func (f *fakeModelClient) GenerateContent(ctx context.Context, model string, con
 	}, nil
 }
 
-func (f *fakeModelClient) EditImage(ctx context.Context, model string, prompt string, referenceImages []genai.ReferenceImage, config *genai.EditImageConfig) (*genai.EditImageResponse, error) {
+func (f *fakeModelClient) EditImage(_ context.Context, model string, prompt string, referenceImages []genai.ReferenceImage, config *genai.EditImageConfig) (*genai.EditImageResponse, error) {
 	f.editCalls++
 	f.gotModel = model
 	f.gotPrompt = prompt

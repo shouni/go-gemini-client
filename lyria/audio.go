@@ -1,3 +1,5 @@
+// Package lyria は、歌詞生成・楽曲設計・Lyriaによる音声生成を束ねる
+// 音楽生成ワークフローを提供します。
 package lyria
 
 import (
@@ -39,8 +41,8 @@ func (g *lyriaAudioGenerator) GenerateAudio(ctx context.Context, recipe *MusicRe
 	parts := g.buildMultiModalParts(promptText, images)
 	responseMIMEType := ""
 	imageHash := calculateImagesHash(images)
-	audioSeed := g.audioSeed(recipe.AIModels.Seed)
-	key := singleflightKey("audio-full", targetModel, promptText, singleflightSeedKey(recipe.AIModels.Seed), responseMIMEType, imageHash)
+	audioSeed := g.audioSeed(recipe.Seed)
+	key := singleflightKey("audio-full", targetModel, promptText, singleflightSeedKey(recipe.Seed), responseMIMEType, imageHash)
 	audio, err := doSingleflight(ctx, &g.group, key, func(execCtx context.Context) ([]byte, error) {
 		if err := g.limiter.Wait(execCtx); err != nil {
 			return nil, err
@@ -121,8 +123,8 @@ func (g *lyriaAudioGenerator) generateAudioSection(ctx context.Context, recipe *
 	parts := g.buildMultiModalParts(promptText, images)
 	responseMIMEType := "audio/wav"
 	imageHash := calculateImagesHash(images)
-	audioSeed := g.audioSeed(recipe.AIModels.Seed)
-	key := singleflightKey("audio-section", targetModel, promptText, singleflightSeedKey(recipe.AIModels.Seed), responseMIMEType, imageHash)
+	audioSeed := g.audioSeed(recipe.Seed)
+	key := singleflightKey("audio-section", targetModel, promptText, singleflightSeedKey(recipe.Seed), responseMIMEType, imageHash)
 	audio, err := doSingleflight(ctx, &g.group, key, func(execCtx context.Context) ([]byte, error) {
 		if err := g.limiter.Wait(execCtx); err != nil {
 			return nil, err

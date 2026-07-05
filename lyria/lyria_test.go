@@ -195,8 +195,8 @@ func TestWorkflow_Run(t *testing.T) {
 	assert.Equal(t, 85, recipe.Tempo)
 	assert.Equal(t, fakeWav, wav)
 
-	if assert.NotNil(t, recipe.AIModels.Seed) {
-		assert.Equal(t, int64(42), *recipe.AIModels.Seed)
+	if assert.NotNil(t, recipe.Seed) {
+		assert.Equal(t, int64(42), *recipe.Seed)
 	}
 
 	mPrompt.AssertExpectations(t)
