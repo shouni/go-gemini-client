@@ -21,17 +21,17 @@ type staticPromptGen struct {
 }
 
 // GenerateLyrics は TextPromptGenerator インターフェースに合わせる
-func (g staticPromptGen) GenerateLyrics(mode string, prompt string) (string, error) {
+func (g staticPromptGen) GenerateLyrics(_ string, _ string) (string, error) {
 	return g.lyricsPrompt, nil
 }
 
 // GenerateRecipe も同様にインターフェースに合わせる
-func (g staticPromptGen) GenerateRecipe(mode string, lyrics *LyricsDraft) (string, error) {
+func (g staticPromptGen) GenerateRecipe(_ string, _ *LyricsDraft) (string, error) {
 	return g.recipePrompt, nil
 }
 
 // GenerateCoverArt も同様にインターフェースに合わせる
-func (g staticPromptGen) GenerateCoverArt(mode string, recipe *MusicRecipe) (string, error) {
+func (g staticPromptGen) GenerateCoverArt(_ string, _ *MusicRecipe) (string, error) {
 	return g.recipePrompt, nil
 }
 
@@ -157,15 +157,15 @@ func TestCloneMusicRecipeDeepCopiesPointerFields(t *testing.T) {
 	cloned := cloneMusicRecipe(src)
 	require.NotNil(t, cloned)
 	require.NotNil(t, cloned.Lyrics)
-	require.NotNil(t, cloned.AIModels.Seed)
+	require.NotNil(t, cloned.Seed)
 	require.NotSame(t, src.Lyrics, cloned.Lyrics)
-	require.NotSame(t, src.AIModels.Seed, cloned.AIModels.Seed)
+	require.NotSame(t, src.Seed, cloned.Seed)
 
 	src.Lyrics.Keywords[0] = "changed"
-	*src.AIModels.Seed = 99
+	*src.Seed = 99
 
 	assert.Equal(t, "one", cloned.Lyrics.Keywords[0])
-	assert.Equal(t, int64(7), *cloned.AIModels.Seed)
+	assert.Equal(t, int64(7), *cloned.Seed)
 	assert.Equal(t, "A minor", cloned.Key)
 	assert.Equal(t, "Japanese female vocal, clear diction", cloned.VocalProfile)
 	if assert.Len(t, cloned.Sections, 1) {
@@ -278,55 +278,6 @@ func TestLyriaAudioGeneratorSingleflightSeparatesDifferentImages(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		_, errs[1] = generator.GenerateAudio(ctx, recipe, imagesB)
-	}()
-
-	require.Eventually(t, func() bool {
-		return client.partsCalls.Load() == 2
-	}, time.Second, time.Millisecond)
-
-	close(client.releasePartsCh)
-	wg.Wait()
-
-	for _, err := range errs {
-		require.NoError(t, err)
-	}
-}
-
-func TestLyriaAudioGeneratorSectionSingleflightSeparatesDifferentImages(t *testing.T) {
-	ctx := context.Background()
-	client := newBlockingGeminiClient()
-	client.partsResp = &gemini.Response{Audios: [][]byte{{1, 2, 3}}}
-	seed := int64(7)
-
-	generator := &lyriaAudioGenerator{
-		aiClient:          client,
-		defaultLyriaModel: "lyria-3",
-		limiter:           rate.NewLimiter(rate.Inf, 0),
-		promptBuilder:     fixedAudioPromptBuilder{fullSong: "full prompt", section: "section prompt"},
-		converter:         noopPhoneticConverter{},
-	}
-
-	recipe := &MusicRecipe{
-		Title:       "Song",
-		Mood:        "Bright",
-		Tempo:       140,
-		Instruments: []string{"synth"},
-		AIModels:    AIModels{Seed: &seed},
-	}
-	section := MusicSection{Name: "Verse", Duration: 30, Prompt: "pulse"}
-	imagesA := []ImagePayload{{Data: []byte("image-a"), MIMEType: "image/png"}}
-	imagesB := []ImagePayload{{Data: []byte("image-b"), MIMEType: "image/png"}}
-
-	var wg sync.WaitGroup
-	errs := make([]error, 2)
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		_, errs[0] = generator.generateAudioSection(ctx, recipe, section, imagesA)
-	}()
-	go func() {
-		defer wg.Done()
-		_, errs[1] = generator.generateAudioSection(ctx, recipe, section, imagesB)
 	}()
 
 	require.Eventually(t, func() bool {

@@ -77,5 +77,4 @@ func TestSeedToPtrInt32(t *testing.T) {
 }
 
 // --- ヘルパー関数 (テスト用) ---
-func float32Ptr(f float32) *float32 { return &f }
-func int32Ptr(i int32) *int32       { return &i }
+func int32Ptr(i int32) *int32 { return &i }

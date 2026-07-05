@@ -9,9 +9,12 @@ import (
 )
 
 var (
-	ErrConfigRequired         = errors.New("APIKey または ProjectID/LocationID のいずれかが必須です")
-	ErrExclusiveConfig        = errors.New("ProjectID/LocationID と APIKey は排他的に設定してください")
-	ErrIncompleteVertexConfig = errors.New("Vertex AIを使用する場合、ProjectIDとLocationIDの両方を設定してください")
+	// ErrConfigRequired は、APIKey と ProjectID/LocationID のいずれも設定されていない場合に返されます。
+	ErrConfigRequired = errors.New("APIKey または ProjectID/LocationID のいずれかが必須です")
+	// ErrExclusiveConfig は、ProjectID/LocationID と APIKey が同時に設定された場合に返されます。
+	ErrExclusiveConfig = errors.New("ProjectID/LocationID と APIKey は排他的に設定してください")
+	// ErrIncompleteVertexConfig は、ProjectID と LocationID の一方のみが設定された場合に返されます。
+	ErrIncompleteVertexConfig = errors.New("vertex AIを使用する場合、ProjectIDとLocationIDの両方を設定してください")
 )
 
 // Config は初期化用の設定です。

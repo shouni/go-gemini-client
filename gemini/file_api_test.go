@@ -20,7 +20,7 @@ type fakeFileClient struct {
 	deleteCalls int
 }
 
-func (f *fakeFileClient) Upload(ctx context.Context, r io.Reader, config *genai.UploadFileConfig) (*genai.File, error) {
+func (f *fakeFileClient) Upload(_ context.Context, _ io.Reader, _ *genai.UploadFileConfig) (*genai.File, error) {
 	if f.uploadErr != nil {
 		return nil, f.uploadErr
 	}
@@ -30,7 +30,7 @@ func (f *fakeFileClient) Upload(ctx context.Context, r io.Reader, config *genai.
 	return &genai.File{Name: "files/test"}, nil
 }
 
-func (f *fakeFileClient) Get(ctx context.Context, name string, config *genai.GetFileConfig) (*genai.File, error) {
+func (f *fakeFileClient) Get(_ context.Context, name string, _ *genai.GetFileConfig) (*genai.File, error) {
 	f.getCalls++
 	if f.getErr != nil {
 		return nil, f.getErr
@@ -45,7 +45,7 @@ func (f *fakeFileClient) Get(ctx context.Context, name string, config *genai.Get
 	return f.getFiles[idx], nil
 }
 
-func (f *fakeFileClient) Delete(ctx context.Context, name string, config *genai.DeleteFileConfig) (*genai.DeleteFileResponse, error) {
+func (f *fakeFileClient) Delete(_ context.Context, _ string, _ *genai.DeleteFileConfig) (*genai.DeleteFileResponse, error) {
 	f.deleteCalls++
 	if f.deleteErr != nil {
 		return nil, f.deleteErr

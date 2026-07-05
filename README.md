@@ -1,10 +1,10 @@
 # ✨ Go Gemini Client
 
+[![CI](https://github.com/shouni/go-gemini-client/actions/workflows/ci.yml/badge.svg)](https://github.com/shouni/go-gemini-client/actions/workflows/ci.yml)
 [![Language](https://img.shields.io/badge/Language-Go-blue)](https://golang.org/)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/shouni/go-gemini-client)](https://golang.org/)
 [![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/shouni/go-gemini-client)](https://github.com/shouni/go-gemini-client/tags)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Go Report Card](https://goreportcard.com/badge/github.com/shouni/go-gemini-client)](https://goreportcard.com/report/github.com/shouni/go-gemini-client)
 [![Go Reference](https://pkg.go.dev/badge/github.com/shouni/go-gemini-client.svg)](https://pkg.go.dev/github.com/shouni/go-gemini-client)
 [![Status](https://img.shields.io/badge/Status-Completed-brightgreen)](#)
 
@@ -239,7 +239,6 @@ workflow, err := lyria.New(
 	audioPromptBuilder,
 	lyria.WithGeminiModel("gemini-2.5-flash"),
 	lyria.WithLyriaModel("lyria-realtime-exp"),
-	lyria.WithMaxConcurrency(2),
 )
 if err != nil {
 	return err

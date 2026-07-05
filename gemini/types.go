@@ -8,25 +8,38 @@ import (
 )
 
 const (
-	DefaultMaxRetries   uint64        = 1
+	// DefaultMaxRetries は、リトライ回数が未設定の場合に使用されるデフォルト値です。
+	DefaultMaxRetries uint64 = 1
+	// DefaultInitialDelay は、初期リトライ間隔が未設定の場合に使用されるデフォルト値です。
 	DefaultInitialDelay time.Duration = 30 * time.Second
-	DefaultMaxDelay     time.Duration = 120 * time.Second
+	// DefaultMaxDelay は、最大リトライ間隔が未設定の場合に使用されるデフォルト値です。
+	DefaultMaxDelay time.Duration = 120 * time.Second
 
-	// File API
-	PollingInterval     = 2 * time.Second
-	PollingTimeout      = 60 * time.Second
+	// PollingInterval は、File API のアップロード完了確認のポーリング間隔です。
+	PollingInterval = 2 * time.Second
+	// PollingTimeout は、File API のアップロード完了確認のタイムアウトです。
+	PollingTimeout = 60 * time.Second
+	// AsyncCleanupTimeout は、非同期クリーンアップ処理のタイムアウトです。
 	AsyncCleanupTimeout = 15 * time.Second
 )
 
 var (
-	ErrEmptyPrompt           = errors.New("プロンプトを空にすることはできません")
-	ErrEmptyModelName        = errors.New("モデル名を空にすることはできません")
-	ErrEmptyParts            = errors.New("生成パーツを空にすることはできません")
-	ErrInvalidPart           = errors.New("生成パーツに nil を含めることはできません")
-	ErrInvalidSeed           = errors.New("Seed は int32 の範囲内である必要があります")
-	ErrEmptyReferenceImages  = errors.New("参照画像を空にすることはできません")
+	// ErrEmptyPrompt は、プロンプトが空の場合に返されます。
+	ErrEmptyPrompt = errors.New("プロンプトを空にすることはできません")
+	// ErrEmptyModelName は、モデル名が空の場合に返されます。
+	ErrEmptyModelName = errors.New("モデル名を空にすることはできません")
+	// ErrEmptyParts は、生成パーツが空の場合に返されます。
+	ErrEmptyParts = errors.New("生成パーツを空にすることはできません")
+	// ErrInvalidPart は、生成パーツに nil が含まれる場合に返されます。
+	ErrInvalidPart = errors.New("生成パーツに nil を含めることはできません")
+	// ErrInvalidSeed は、Seed が int32 の範囲外の場合に返されます。
+	ErrInvalidSeed = errors.New("seed は int32 の範囲内である必要があります")
+	// ErrEmptyReferenceImages は、参照画像が空の場合に返されます。
+	ErrEmptyReferenceImages = errors.New("参照画像を空にすることはできません")
+	// ErrInvalidReferenceImage は、参照画像に nil が含まれる場合に返されます。
 	ErrInvalidReferenceImage = errors.New("参照画像に nil を含めることはできません")
-	ErrUnsupportedBackend    = errors.New("この操作は現在のバックエンドではサポートされていません")
+	// ErrUnsupportedBackend は、現在のバックエンドでサポートされない操作が呼び出された場合に返されます。
+	ErrUnsupportedBackend = errors.New("この操作は現在のバックエンドではサポートされていません")
 )
 
 // PersonGeneration は人物生成の許可設定を表すカスタム型です。
@@ -63,6 +76,7 @@ type Response struct {
 	RawResponse *genai.GenerateContentResponse
 }
 
+// HasImageConfig は、画像生成特有のパラメータが1つでも設定されているかを判定します。
 func (o *GenerateOptions) HasImageConfig() bool {
 	if o == nil {
 		return false

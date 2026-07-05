@@ -105,9 +105,9 @@ func cloneMusicRecipe(src *MusicRecipe) *MusicRecipe {
 		copy(dst.Sections, src.Sections)
 	}
 	dst.Lyrics = cloneLyricsDraft(src.Lyrics)
-	if src.AIModels.Seed != nil {
-		v := *src.AIModels.Seed
-		dst.AIModels.Seed = &v
+	if src.Seed != nil {
+		v := *src.Seed
+		dst.Seed = &v
 	}
 	return &dst
 }

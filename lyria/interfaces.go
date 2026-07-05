@@ -21,7 +21,6 @@ type Composer interface {
 // AudioGenerator は MusicRecipe から音声バイナリを生成します。
 type AudioGenerator interface {
 	GenerateAudio(ctx context.Context, recipe *MusicRecipe, images []ImagePayload) ([]byte, error)
-	GenerateFullAudio(ctx context.Context, recipe *MusicRecipe, images []ImagePayload) ([]byte, error)
 }
 
 // TextPromptGenerator は歌詞およびレシピ生成のためのプロンプトを構築するインターフェースです。
@@ -39,4 +38,14 @@ type AudioPromptBuilder interface {
 // ReadingConverter は Lyria に渡すプロンプトを読み上げ向けの表記に変換します。
 type ReadingConverter interface {
 	ConvertToReading(input string) string
+}
+
+// noopReadingConverter は、WithReadingConverter が指定されなかった場合に使われる
+// 何もしないデフォルト実装です。入力をそのまま返します。
+// 読み仮名変換が必要な場合は、呼び出し側で ReadingConverter の実装を注入してください。
+type noopReadingConverter struct{}
+
+// ConvertToReading は入力をそのまま返します。
+func (noopReadingConverter) ConvertToReading(input string) string {
+	return input
 }

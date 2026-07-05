@@ -21,7 +21,7 @@ func (c *Client) UploadFile(ctx context.Context, r io.Reader, mimeType, displayN
 
 	file, err := c.fileClient.Upload(ctx, r, uploadCfg)
 	if err != nil {
-		return "", "", fmt.Errorf("Gemini File API へのアップロードに失敗しました: %w", err)
+		return "", "", fmt.Errorf("gemini File API へのアップロードに失敗しました: %w", err)
 	}
 
 	// Active 状態になるのを待機

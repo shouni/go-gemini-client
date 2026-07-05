@@ -6,7 +6,6 @@ type options struct {
 	geminiModel      string
 	lyriaModel       string
 	rateInterval     time.Duration
-	maxConcurrency   int
 	readingConverter ReadingConverter
 }
 
@@ -38,13 +37,6 @@ func WithReadingConverter(converter ReadingConverter) Option {
 func WithRateInterval(value time.Duration) Option {
 	return func(opts *options) {
 		opts.rateInterval = value
-	}
-}
-
-// WithMaxConcurrency sets the maximum concurrent section audio generations.
-func WithMaxConcurrency(value int) Option {
-	return func(opts *options) {
-		opts.maxConcurrency = value
 	}
 }
 
