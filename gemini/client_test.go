@@ -6,8 +6,20 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/oauth2/google"
 	"google.golang.org/genai"
 )
+
+// skipWithoutGCPCredentials は、GCP Application Default Credentials が
+// 利用できない環境（CIランナーなど）でこのテストをスキップします。
+// Vertex AI バックエンドでの genai.NewClient は ADC を必須とするため、
+// 認証情報がない環境ではここでスキップしないと必ず失敗します。
+func skipWithoutGCPCredentials(t *testing.T) {
+	t.Helper()
+	if _, err := google.FindDefaultCredentials(context.Background()); err != nil {
+		t.Skipf("GCP Application Default Credentials が見つからないため、このテストをスキップします: %v", err)
+	}
+}
 
 type fakeModelClient struct {
 	calls              int
@@ -111,6 +123,11 @@ func TestNewClient(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.wantErr == nil && tt.cfg.ProjectID != "" {
+				// Vertex AI バックエンドの構築には ADC が必要
+				skipWithoutGCPCredentials(t)
+			}
+
 			client, err := NewClient(ctx, tt.cfg)
 
 			if tt.wantErr != nil {
