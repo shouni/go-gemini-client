@@ -3,9 +3,7 @@ package lyria
 import (
 	"context"
 	"errors"
-	"fmt"
 
-	"github.com/shouni/audio/phonetic"
 	"github.com/shouni/go-gemini-client/gemini"
 	"golang.org/x/time/rate"
 )
@@ -40,11 +38,7 @@ func New(aiClient gemini.Generator, promptGen TextPromptGenerator, audioPromptBu
 
 	converter := opts.readingConverter
 	if converter == nil {
-		var err error
-		converter, err = phonetic.NewConverter()
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize phonetic converter: %w", err)
-		}
+		converter = noopReadingConverter{}
 	}
 
 	textGenerator := &lyriaTextGenerator{
@@ -61,7 +55,6 @@ func New(aiClient gemini.Generator, promptGen TextPromptGenerator, audioPromptBu
 			promptBuilder:     audioPromptBuilder,
 			converter:         converter,
 			limiter:           limiter,
-			maxConcurrency:    opts.maxConcurrency,
 			defaultLyriaModel: opts.lyriaModel,
 		},
 	}, nil
@@ -100,9 +93,4 @@ func (w *Workflow) Compose(ctx context.Context, ai AIModels, lyrics *LyricsDraft
 // GenerateAudio generates full-song audio from a music recipe.
 func (w *Workflow) GenerateAudio(ctx context.Context, recipe *MusicRecipe, images []ImagePayload) ([]byte, error) {
 	return w.audio.GenerateAudio(ctx, recipe, images)
-}
-
-// GenerateFullAudio generates each section separately and combines the audio.
-func (w *Workflow) GenerateFullAudio(ctx context.Context, recipe *MusicRecipe, images []ImagePayload) ([]byte, error) {
-	return w.audio.GenerateFullAudio(ctx, recipe, images)
 }

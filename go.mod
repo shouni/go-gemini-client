@@ -3,7 +3,6 @@ module github.com/shouni/go-gemini-client
 go 1.26
 
 require (
-	github.com/shouni/audio v1.1.0
 	github.com/shouni/netarmor v1.1.0
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/oauth2 v0.36.0
@@ -24,9 +23,6 @@ require (
 	github.com/google/s2a-go v0.1.8 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.4 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
-	github.com/ikawaha/kagome-dict v1.1.7 // indirect
-	github.com/ikawaha/kagome-dict/ipa v1.2.6 // indirect
-	github.com/ikawaha/kagome/v2 v2.11.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	go.opencensus.io v0.24.0 // indirect

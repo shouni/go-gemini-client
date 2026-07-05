@@ -57,17 +57,9 @@ github.com/googleapis/enterprise-certificate-proxy v0.3.4 h1:XYIDZApgAnrN1c855gT
 github.com/googleapis/enterprise-certificate-proxy v0.3.4/go.mod h1:YKe7cfqYXjKGpGvmSg28/fFvhNzinZQm8DGnaburhGA=
 github.com/gorilla/websocket v1.5.3 h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aNNg=
 github.com/gorilla/websocket v1.5.3/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
-github.com/ikawaha/kagome-dict v1.1.7 h1:O/uAL+WCGhp6kT0+szxBSPaSM4i+vdArSefFvJE4Nug=
-github.com/ikawaha/kagome-dict v1.1.7/go.mod h1:9tvk7/jZkvYt40foxkB9CqSAAknoQrIPfzqQd05UkFw=
-github.com/ikawaha/kagome-dict/ipa v1.2.6 h1:Bcvm4jgxAAnTIKb6ckqUKBiFDN0wuanFfycMuYt7xGQ=
-github.com/ikawaha/kagome-dict/ipa v1.2.6/go.mod h1:ONdTMUAKMCq9yx4s69QRtPcJLEMVM0BNNYQrMCJLWb0=
-github.com/ikawaha/kagome/v2 v2.11.0 h1:R914EkRzay9qtUbsFzEbcdZ3wHwwSPvbPkuBI1oIf78=
-github.com/ikawaha/kagome/v2 v2.11.0/go.mod h1:6mYPezBou+iNVnX9uNa00Sfu6S6t2zcM8Nv1EW9Y9so=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/prometheus/client_model v0.0.0-20190812154241-14fe0d1b01d4/go.mod h1:xMI15A0UPsDsEKsMN9yxemIoYk6Tm2C1GtYGdfGttqA=
-github.com/shouni/audio v1.1.0 h1:nAX3vNsOhbVezwKZDmMfeDXWiEusr+/aeJYqNS7eahs=
-github.com/shouni/audio v1.1.0/go.mod h1:4j6OqZMB2LhDYk6ThHlsrzyYHBSQcQTKNPLiGPYOwqA=
 github.com/shouni/netarmor v1.1.0 h1:PNgmnY7sFvIBKtE8TqjO2IUguwyNISRt4x13fhhIm4w=
 github.com/shouni/netarmor v1.1.0/go.mod h1:SOrb359QPM599FUJQ2GsRcUFOvJTaQ+L98Wo9Vr7xMk=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=

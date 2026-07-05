@@ -239,7 +239,6 @@ workflow, err := lyria.New(
 	audioPromptBuilder,
 	lyria.WithGeminiModel("gemini-2.5-flash"),
 	lyria.WithLyriaModel("lyria-realtime-exp"),
-	lyria.WithMaxConcurrency(2),
 )
 if err != nil {
 	return err
