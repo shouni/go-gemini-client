@@ -58,15 +58,10 @@ func (c fixedReadingConverter) ConvertToReading(string) string {
 
 type fixedAudioPromptBuilder struct {
 	fullSong string
-	section  string
 }
 
 func (b fixedAudioPromptBuilder) BuildFullSong(*MusicRecipe) string {
 	return b.fullSong
-}
-
-func (b fixedAudioPromptBuilder) BuildSection(*MusicRecipe, MusicSection) string {
-	return b.section
 }
 
 func partsWithText(t *testing.T, want string) interface{} {
@@ -138,7 +133,7 @@ func TestWorkflow_Run(t *testing.T) {
 			aiClient:          mAI,
 			defaultLyriaModel: "lyria-3",
 			limiter:           rate.NewLimiter(rate.Inf, 0),
-			promptBuilder:     fixedAudioPromptBuilder{fullSong: "full prompt", section: "section prompt"},
+			promptBuilder:     fixedAudioPromptBuilder{fullSong: "full prompt"},
 			converter:         noopPhoneticConverter{},
 		},
 	}

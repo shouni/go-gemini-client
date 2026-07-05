@@ -32,7 +32,6 @@ type TextPromptGenerator interface {
 // AudioPromptBuilder は Lyria の音声生成用プロンプトを構築するインターフェースです。
 type AudioPromptBuilder interface {
 	BuildFullSong(recipe *MusicRecipe) string
-	BuildSection(recipe *MusicRecipe, section MusicSection) string
 }
 
 // ReadingConverter は Lyria に渡すプロンプトを読み上げ向けの表記に変換します。
