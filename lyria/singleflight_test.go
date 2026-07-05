@@ -184,7 +184,7 @@ func TestLyriaAudioGeneratorSingleflightDeduplicatesConcurrentCalls(t *testing.T
 		aiClient:          client,
 		defaultLyriaModel: "lyria-3",
 		limiter:           rate.NewLimiter(rate.Inf, 0),
-		promptBuilder:     fixedAudioPromptBuilder{fullSong: "full prompt", section: "section prompt"},
+		promptBuilder:     fixedAudioPromptBuilder{fullSong: "full prompt"},
 		converter:         noopPhoneticConverter{},
 	}
 
@@ -250,7 +250,7 @@ func TestLyriaAudioGeneratorSingleflightSeparatesDifferentImages(t *testing.T) {
 		aiClient:          client,
 		defaultLyriaModel: "lyria-3",
 		limiter:           rate.NewLimiter(rate.Inf, 0),
-		promptBuilder:     fixedAudioPromptBuilder{fullSong: "full prompt", section: "section prompt"},
+		promptBuilder:     fixedAudioPromptBuilder{fullSong: "full prompt"},
 		converter:         noopPhoneticConverter{},
 	}
 
