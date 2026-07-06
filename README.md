@@ -36,7 +36,6 @@
 - **File API サポート**: ファイルアップロード後、利用可能な `Active` 状態になるまで自動でポーリングします。
 - **自動クリーンアップ**: Active 化に失敗した File API オブジェクトはバックグラウンドで削除を試みます。
 - **レスポンス抽出**: テキスト、生成画像、生成音声を `gemini.Response` にまとめて返します。
-- **画像編集 API**: Vertex AI の `EditImage` / `ReferenceImage` / `EditImageConfig` を薄く公開し、マスク画像や編集元画像を SDK の意味論のまま扱えます。
 
 ### 🎼 Lyria ワークフロー (`lyria`)
 
@@ -149,49 +148,6 @@ if err != nil {
 
 if len(resp.Images) > 0 {
 	// resp.Images[0] contains image bytes.
-}
-```
-
----
-
-## 🖌️ Vertex AI 画像編集
-
-`EditImage` は Vertex AI の画像編集 API を薄くラップします。編集元画像やマスク画像は通常の `genai.Part` ではなく、SDK の `genai.ReferenceImage` として渡します。
-
-Gemini API backend では `ErrUnsupportedBackend` を返します。
-
-```go
-source := &genai.Image{
-	GCSURI:   "gs://my-bucket/source.png",
-	MIMEType: "image/png",
-}
-mask := &genai.Image{
-	GCSURI:   "gs://my-bucket/mask.png",
-	MIMEType: "image/png",
-}
-
-resp, err := client.EditImage(
-	ctx,
-	"imagen-3.0-capability-001",
-	"背景を明るいスタジオ風に変更してください",
-	[]genai.ReferenceImage{
-		genai.NewRawReferenceImage(source, 1),
-		genai.NewMaskReferenceImage(mask, 2, &genai.MaskReferenceConfig{
-			MaskMode: genai.MaskReferenceModeMaskModeUserProvided,
-		}),
-	},
-	&genai.EditImageConfig{
-		NumberOfImages: 1,
-		AspectRatio:    "1:1",
-		OutputMIMEType: "image/png",
-	},
-)
-if err != nil {
-	return err
-}
-
-if len(resp.GeneratedImages) > 0 && resp.GeneratedImages[0].Image != nil {
-	// resp.GeneratedImages[0].Image.ImageBytes contains edited image bytes.
 }
 ```
 
