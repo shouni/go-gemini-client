@@ -9,7 +9,6 @@ import (
 
 type modelClient interface {
 	GenerateContent(ctx context.Context, model string, contents []*genai.Content, config *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error)
-	EditImage(ctx context.Context, model string, prompt string, referenceImages []genai.ReferenceImage, config *genai.EditImageConfig) (*genai.EditImageResponse, error)
 }
 
 type fileClient interface {
@@ -24,10 +23,6 @@ type genAIModelClient struct {
 
 func (c genAIModelClient) GenerateContent(ctx context.Context, model string, contents []*genai.Content, config *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error) {
 	return c.models.GenerateContent(ctx, model, contents, config)
-}
-
-func (c genAIModelClient) EditImage(ctx context.Context, model string, prompt string, referenceImages []genai.ReferenceImage, config *genai.EditImageConfig) (*genai.EditImageResponse, error) {
-	return c.models.EditImage(ctx, model, prompt, referenceImages, config)
 }
 
 type genAIFileClient struct {

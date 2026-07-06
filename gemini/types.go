@@ -34,12 +34,6 @@ var (
 	ErrInvalidPart = errors.New("生成パーツに nil を含めることはできません")
 	// ErrInvalidSeed は、Seed が int32 の範囲外の場合に返されます。
 	ErrInvalidSeed = errors.New("seed は int32 の範囲内である必要があります")
-	// ErrEmptyReferenceImages は、参照画像が空の場合に返されます。
-	ErrEmptyReferenceImages = errors.New("参照画像を空にすることはできません")
-	// ErrInvalidReferenceImage は、参照画像に nil が含まれる場合に返されます。
-	ErrInvalidReferenceImage = errors.New("参照画像に nil を含めることはできません")
-	// ErrUnsupportedBackend は、現在のバックエンドでサポートされない操作が呼び出された場合に返されます。
-	ErrUnsupportedBackend = errors.New("この操作は現在のバックエンドではサポートされていません")
 )
 
 // PersonGeneration は人物生成の許可設定を表すカスタム型です。
