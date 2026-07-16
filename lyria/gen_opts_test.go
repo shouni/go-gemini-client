@@ -6,6 +6,15 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestBuildJSONGenerateOptionsAppliesSchema(t *testing.T) {
+	schema := lyricsDraftSchema()
+
+	got := buildJSONGenerateOptions(nil, schema)
+
+	assert.Equal(t, "application/json", got.ResponseMIMEType)
+	assert.Same(t, schema, got.ResponseSchema)
+}
+
 func TestBuildAudioGenerateOptionsOmitsNilSeed(t *testing.T) {
 	got := buildAudioGenerateOptions(nil)
 

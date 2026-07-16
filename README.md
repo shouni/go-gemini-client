@@ -40,6 +40,7 @@
 ### 🎼 Lyria ワークフロー (`lyria`)
 
 - **作詞から音声生成までの統合**: 歌詞生成、作曲レシピ生成、Lyria 音声生成を `Workflow` で一括実行できます。
+- **構造化出力**: 歌詞・レシピ生成は `ResponseSchema` による constrained decoding を使い、JSON 以外のノイズ混入を防ぎます。
 - **重複呼び出し抑制**: singleflight により、同一条件の音声生成リクエストをまとめます。
 
 ---
@@ -234,6 +235,7 @@ recipe, wavBytes, err := workflow.Run(ctx, lyria.AIModels{}, &lyria.CollectedCon
 | `PersonGeneration` | Vertex AI 画像生成での人物生成ポリシーを指定します。 |
 | `SafetySettings` | SDK の SafetySettings を指定します。 |
 | `ResponseMIMEType` | `image/png` や `audio/wav` など、期待するレスポンス MIME type を指定します。 |
+| `ResponseSchema` | 構造化出力（constrained decoding）のスキーマ。`application/json` と併用すると、出力が文法レベルでスキーマに制約されます。 |
 
 ---
 

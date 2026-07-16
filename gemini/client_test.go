@@ -240,6 +240,27 @@ func TestBuildGenerateConfig_AppliesOptions(t *testing.T) {
 	}
 }
 
+func TestBuildGenerateConfig_AppliesResponseSchema(t *testing.T) {
+	c := &Client{}
+	schema := &genai.Schema{
+		Type: genai.TypeObject,
+		Properties: map[string]*genai.Schema{
+			"title": {Type: genai.TypeString},
+		},
+	}
+
+	got, err := c.buildGenerateConfig(GenerateOptions{
+		ResponseMIMEType: "application/json",
+		ResponseSchema:   schema,
+	})
+	if err != nil {
+		t.Fatalf("buildGenerateConfig() unexpected error = %v", err)
+	}
+	if got.ResponseSchema != schema {
+		t.Fatalf("ResponseSchema was not applied: %+v", got.ResponseSchema)
+	}
+}
+
 func TestBuildGenerateConfig_AudioResponseMIMETypeSetsModalities(t *testing.T) {
 	c := &Client{}
 

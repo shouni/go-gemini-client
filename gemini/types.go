@@ -60,6 +60,10 @@ type GenerateOptions struct {
 	PersonGeneration PersonGeneration
 	SafetySettings   []*genai.SafetySetting
 	ResponseMIMEType string
+	// ResponseSchema は構造化出力のスキーマです。ResponseMIMEType "application/json" と
+	// 併用すると、モデル出力が文法レベルでスキーマに制約され、JSON 以外の
+	// 余計なテキストが混入しなくなります。
+	ResponseSchema *genai.Schema
 }
 
 // Response は生成結果のラッパーです。

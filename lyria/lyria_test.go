@@ -77,6 +77,10 @@ func jsonGenerateOptionsWithSeed(t *testing.T, wantSeed *int64) interface{} {
 		if opts.ResponseMIMEType != "application/json" {
 			return false
 		}
+		// 構造化出力スキーマが常に指定されていること
+		if opts.ResponseSchema == nil {
+			return false
+		}
 		if wantSeed == nil {
 			return opts.Seed == nil
 		}
