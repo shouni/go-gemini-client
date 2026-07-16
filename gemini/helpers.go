@@ -7,10 +7,9 @@ import (
 	"io"
 	"math"
 	"net"
+	"net/http"
 
 	"google.golang.org/genai"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // APIResponseError は、コンテンツのブロックや空のレスポンスなど、
@@ -37,13 +36,14 @@ func shouldRetry(err error) bool {
 		return false
 	}
 
-	// gRPC ステータスコードに基づいた判定。
-	if st, ok := status.FromError(err); ok {
-		switch st.Code() {
-		case codes.DeadlineExceeded, // サーバー側でのタイムアウト
-			codes.Unavailable,       // 一時的なサービス停止
-			codes.ResourceExhausted, // レート制限
-			codes.Internal:          // サーバー内部エラー
+	// genai SDK は REST で通信し、API エラーを HTTP ステータスコード付きの
+	// genai.APIError（値型）として返すため、ステータスコードで判定します。
+	if apiErr, ok := errors.AsType[genai.APIError](err); ok {
+		switch apiErr.Code {
+		case http.StatusTooManyRequests, // レート制限
+			http.StatusInternalServerError, // サーバー内部エラー
+			http.StatusServiceUnavailable,  // 一時的なサービス停止
+			http.StatusGatewayTimeout:      // サーバー側でのタイムアウト
 			return true
 		default:
 			return false

@@ -12,6 +12,10 @@ import (
 	"golang.org/x/sync/singleflight"
 )
 
+// singleflightExecTimeout は、singleflight で共有される生成処理1回あたりの実行タイムアウトです。
+// 呼び出し元の context から切り離した実行用 context に適用されます。
+const singleflightExecTimeout = 5 * time.Minute
+
 // singleflightKey は namespace と可変長の部品から衝突しにくい singleflight 用キーを作ります。
 func singleflightKey(namespace string, parts ...string) string {
 	hasher := sha256.New()
@@ -56,7 +60,7 @@ func calculateImagesHash(images []ImagePayload) string {
 
 // doSingleflight は同じ key の同時実行をまとめ、呼び出し元のキャンセルも尊重します。
 func doSingleflight[T any](ctx context.Context, group *singleflight.Group, key string, fn func(execCtx context.Context) (T, error)) (T, error) {
-	execCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute)
+	execCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), singleflightExecTimeout)
 	defer cancel()
 	ch := group.DoChan(key, func() (any, error) {
 		return fn(execCtx)

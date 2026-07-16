@@ -3,12 +3,13 @@ package gemini
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"math"
+	"net/http"
 	"testing"
 
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
+	"google.golang.org/genai"
 )
 
 // --- shouldRetry のテスト ---
@@ -21,9 +22,13 @@ func TestShouldRetry(t *testing.T) {
 		{"nilはリトライしない", nil, false},
 		{"APIResponseErrorはリトライしない", &APIResponseError{msg: "blocked"}, false},
 		{"コンテキストキャンセルはリトライしない", context.Canceled, false},
-		{"gRPC Unavailableはリトライする", status.Error(codes.Unavailable, "service down"), true},
-		{"gRPC Internalはリトライする", status.Error(codes.Internal, "internal error"), true},
-		{"gRPC InvalidArgumentはリトライしない", status.Error(codes.InvalidArgument, "bad request"), false},
+		{"429 レート制限はリトライする", genai.APIError{Code: http.StatusTooManyRequests, Status: "RESOURCE_EXHAUSTED"}, true},
+		{"500 サーバーエラーはリトライする", genai.APIError{Code: http.StatusInternalServerError, Status: "INTERNAL"}, true},
+		{"503 一時停止はリトライする", genai.APIError{Code: http.StatusServiceUnavailable, Status: "UNAVAILABLE"}, true},
+		{"504 タイムアウトはリトライする", genai.APIError{Code: http.StatusGatewayTimeout, Status: "DEADLINE_EXCEEDED"}, true},
+		{"400 リクエスト不正はリトライしない", genai.APIError{Code: http.StatusBadRequest, Status: "INVALID_ARGUMENT"}, false},
+		{"404 未検出はリトライしない", genai.APIError{Code: http.StatusNotFound, Status: "NOT_FOUND"}, false},
+		{"ラップされた429もリトライする", fmt.Errorf("wrapped: %w", genai.APIError{Code: http.StatusTooManyRequests}), true},
 		{"EOFはリトライする", io.EOF, true},
 	}
 

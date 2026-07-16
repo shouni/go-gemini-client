@@ -7,19 +7,19 @@ import (
 )
 
 func TestBuildAudioGenerateOptionsOmitsNilSeed(t *testing.T) {
-	got := buildAudioGenerateOptions(nil, "audio/wav")
+	got := buildAudioGenerateOptions(nil)
 
 	assert.Nil(t, got.Seed)
-	assert.Equal(t, "audio/wav", got.ResponseMIMEType)
+	assert.Empty(t, got.ResponseMIMEType)
 }
 
 func TestBuildAudioGenerateOptionsKeepsSeed(t *testing.T) {
 	seed := int64(42)
 
-	got := buildAudioGenerateOptions(&seed, "audio/wav")
+	got := buildAudioGenerateOptions(&seed)
 
 	if assert.NotNil(t, got.Seed) {
 		assert.Equal(t, seed, *got.Seed)
 	}
-	assert.Equal(t, "audio/wav", got.ResponseMIMEType)
+	assert.Empty(t, got.ResponseMIMEType)
 }

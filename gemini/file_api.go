@@ -54,10 +54,10 @@ func (c *Client) waitForFileActive(ctx context.Context, fileName string) (string
 		return uri, err
 	}
 
-	ticker := time.NewTicker(c.effectiveFilePollingInterval())
+	ticker := time.NewTicker(c.filePollingInterval)
 	defer ticker.Stop()
 
-	timeout := time.NewTimer(c.effectiveFilePollingTimeout())
+	timeout := time.NewTimer(c.filePollingTimeout)
 	defer timeout.Stop()
 
 	for {
@@ -66,7 +66,7 @@ func (c *Client) waitForFileActive(ctx context.Context, fileName string) (string
 			return "", fmt.Errorf("ファイル %q の待機中にコンテキストがキャンセルされました: %w", fileName, ctx.Err())
 
 		case <-timeout.C:
-			return "", fmt.Errorf("ファイル %q の処理が制限時間（%v）内に完了しませんでした", fileName, c.effectiveFilePollingTimeout())
+			return "", fmt.Errorf("ファイル %q の処理が制限時間（%v）内に完了しませんでした", fileName, c.filePollingTimeout)
 
 		case <-ticker.C:
 			if uri, done, err := c.checkFileState(ctx, fileName); done || err != nil {
@@ -95,20 +95,6 @@ func (c *Client) checkFileState(ctx context.Context, fileName string) (uri strin
 	return "", false, nil
 }
 
-func (c *Client) effectiveFilePollingInterval() time.Duration {
-	if c.filePollingInterval > 0 {
-		return c.filePollingInterval
-	}
-	return PollingInterval
-}
-
-func (c *Client) effectiveFilePollingTimeout() time.Duration {
-	if c.filePollingTimeout > 0 {
-		return c.filePollingTimeout
-	}
-	return PollingTimeout
-}
-
 // asyncDelete はエラー時などの後処理として、バックグラウンドでファイルを削除します。
 func (c *Client) asyncDelete(fileName string) {
 	go func() {
@@ -116,7 +102,7 @@ func (c *Client) asyncDelete(fileName string) {
 		ctx, cancel := context.WithTimeout(context.Background(), AsyncCleanupTimeout)
 		defer cancel()
 		if err := c.DeleteFile(ctx, fileName); err != nil {
-			slog.WarnContext(context.Background(), "バックグラウンドでのファイルクリーンアップに失敗しました", "name", fileName, "error", err)
+			slog.WarnContext(ctx, "バックグラウンドでのファイルクリーンアップに失敗しました", "name", fileName, "error", err)
 		}
 	}()
 }

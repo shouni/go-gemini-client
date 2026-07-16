@@ -3,6 +3,7 @@ package gemini
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 
@@ -27,12 +28,18 @@ type fakeModelClient struct {
 	gotConfig *genai.GenerateContentConfig
 	resp      *genai.GenerateContentResponse
 	err       error
+	errs      []error // 呼び出し順に返すエラー。使い切った後は resp / err に従う
 }
 
 func (f *fakeModelClient) GenerateContent(_ context.Context, model string, _ []*genai.Content, config *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error) {
 	f.calls++
 	f.gotModel = model
 	f.gotConfig = config
+	if f.calls <= len(f.errs) {
+		if e := f.errs[f.calls-1]; e != nil {
+			return nil, e
+		}
+	}
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -321,6 +328,55 @@ func TestGenerateWithParts_ExtractsImagesAndAudios(t *testing.T) {
 	}
 	if len(resp.Audios) != 1 || string(resp.Audios[0]) != "audio" {
 		t.Fatalf("Audios = %v, want audio", resp.Audios)
+	}
+}
+
+func TestGenerateWithParts_RetriesOnRateLimit(t *testing.T) {
+	ctx := context.Background()
+	fake := &fakeModelClient{
+		errs: []error{genai.APIError{Code: http.StatusTooManyRequests, Status: "RESOURCE_EXHAUSTED"}},
+	}
+	c := &Client{
+		modelClient: fake,
+		retryConfig: Config{
+			MaxRetries:   2,
+			InitialDelay: time.Nanosecond,
+			MaxDelay:     time.Nanosecond,
+		}.buildRetryConfig(),
+	}
+
+	resp, err := c.GenerateWithParts(ctx, "gemini-test", []*genai.Part{{Text: "hello"}}, GenerateOptions{})
+	if err != nil {
+		t.Fatalf("429 の後にリトライで成功するはずですが、エラーが返りました: %v", err)
+	}
+	if resp.Text != "ok" {
+		t.Fatalf("Text = %q, want ok", resp.Text)
+	}
+	if fake.calls != 2 {
+		t.Fatalf("API 呼び出し回数 = %d, want 2 (初回 + リトライ1回)", fake.calls)
+	}
+}
+
+func TestGenerateWithParts_DoesNotRetryOnBadRequest(t *testing.T) {
+	ctx := context.Background()
+	fake := &fakeModelClient{
+		err: genai.APIError{Code: http.StatusBadRequest, Status: "INVALID_ARGUMENT"},
+	}
+	c := &Client{
+		modelClient: fake,
+		retryConfig: Config{
+			MaxRetries:   2,
+			InitialDelay: time.Nanosecond,
+			MaxDelay:     time.Nanosecond,
+		}.buildRetryConfig(),
+	}
+
+	_, err := c.GenerateWithParts(ctx, "gemini-test", []*genai.Part{{Text: "hello"}}, GenerateOptions{})
+	if err == nil {
+		t.Fatal("400 エラーが返るべきですが、nil が返りました")
+	}
+	if fake.calls != 1 {
+		t.Fatalf("API 呼び出し回数 = %d, want 1 (リトライなし)", fake.calls)
 	}
 }
 

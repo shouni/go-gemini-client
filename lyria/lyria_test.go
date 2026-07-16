@@ -175,7 +175,6 @@ func TestWorkflow_Run(t *testing.T) {
 	}, nil)
 
 	// 3. 音声生成実行
-	mAI.On("IsVertexAI").Return(false).Once()
 	mAI.On("GenerateWithParts", mock.Anything, "lyria-custom-v1", mock.Anything, mock.Anything).Return(&gemini.Response{
 		Audios: [][]byte{fakeWav},
 	}, nil)
@@ -309,7 +308,7 @@ func TestNewUsesReadingConverterOption(t *testing.T) {
 	mAI.AssertExpectations(t)
 }
 
-func TestGenerateAudioOmitsSeedForVertexAI(t *testing.T) {
+func TestGenerateAudioKeepsSeed(t *testing.T) {
 	ctx := context.Background()
 	mAI := new(MockGeminiClient)
 	seed := int64(42)
@@ -321,12 +320,11 @@ func TestGenerateAudioOmitsSeedForVertexAI(t *testing.T) {
 		limiter:           rate.NewLimiter(rate.Inf, 0),
 	}
 
-	mAI.On("IsVertexAI").Return(true).Once()
 	mAI.On("GenerateWithParts",
 		mock.Anything,
 		"lyria-3",
 		partsWithText(t, "full prompt"),
-		audioGenerateOptionsWithSeed(t, nil, ""),
+		audioGenerateOptionsWithSeed(t, &seed, ""),
 	).Return(&gemini.Response{Audios: [][]byte{{1, 2, 3}}}, nil)
 
 	audio, err := generator.GenerateAudio(ctx, &MusicRecipe{Title: "Song", AIModels: AIModels{Seed: &seed}}, nil)

@@ -21,6 +21,43 @@ type lyriaTextGenerator struct {
 	group        singleflight.Group
 }
 
+// resolveModel は呼び出しごとのモデル指定があればそれを、なければデフォルトモデルを返します。
+func (g *lyriaTextGenerator) resolveModel(override string) string {
+	if override != "" {
+		return override
+	}
+	return g.defaultModel
+}
+
+// generateJSON は歌詞・レシピ生成で共通の「singleflight → Gemini 呼び出し → JSON デコード」
+// フローを実行します。kind はエラーメッセージと singleflight キーの識別子です。
+// 戻り値は singleflight で共有されるため、呼び出し側で複製してから返してください。
+func generateJSON[T any](ctx context.Context, g *lyriaTextGenerator, kind, model, prompt string, seed *int64) (*T, error) {
+	key := singleflightKey(kind, model, prompt)
+	return doSingleflight(ctx, &g.group, key, func(execCtx context.Context) (*T, error) {
+		parts := []*genai.Part{{Text: prompt}}
+		resp, err := g.aiClient.GenerateWithParts(execCtx, model, parts, buildJSONGenerateOptions(seed))
+		if err != nil {
+			return nil, fmt.Errorf("%s generation failed (model: %s): %w", kind, model, err)
+		}
+		if resp == nil {
+			return nil, fmt.Errorf("%s response is nil", kind)
+		}
+
+		raw := strings.TrimSpace(resp.Text)
+		if raw == "" {
+			return nil, fmt.Errorf("AI returned an empty string for the %s", kind)
+		}
+
+		jsonStr := cleanJSONResponse(raw)
+		var out T
+		if err := json.Unmarshal([]byte(jsonStr), &out); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal %s json: %w (raw: %s)", kind, err, jsonStr)
+		}
+		return &out, nil
+	})
+}
+
 // GenerateLyrics は収集済みコンテンツから歌詞ドラフトを生成します。
 func (g *lyriaTextGenerator) GenerateLyrics(ctx context.Context, ai AIModels, input *CollectedContent) (*LyricsDraft, error) {
 	if input == nil {
@@ -32,41 +69,12 @@ func (g *lyriaTextGenerator) GenerateLyrics(ctx context.Context, ai AIModels, in
 		return nil, fmt.Errorf("failed to build lyrics prompt: %w", err)
 	}
 
-	targetModel := g.defaultModel
-	if ai.TextModel != "" {
-		targetModel = ai.TextModel
-	}
-
-	key := singleflightKey("lyrics", targetModel, promptText)
-	lyrics, err := doSingleflight(ctx, &g.group, key, func(execCtx context.Context) (*LyricsDraft, error) {
-		parts := []*genai.Part{{Text: promptText}}
-		opt := buildJSONGenerateOptions(ai.Seed)
-		resp, err := g.aiClient.GenerateWithParts(execCtx, targetModel, parts, opt)
-		if err != nil {
-			return nil, fmt.Errorf("lyrics generation failed (model: %s): %w", targetModel, err)
-		}
-		if resp == nil {
-			return nil, fmt.Errorf("lyrics response is nil")
-		}
-
-		rawLyrics := strings.TrimSpace(resp.Text)
-		if rawLyrics == "" {
-			return nil, fmt.Errorf("AI returned an empty string for the lyrics")
-		}
-
-		var lyrics LyricsDraft
-		jsonStr := cleanJSONResponse(rawLyrics)
-		if err := json.Unmarshal([]byte(jsonStr), &lyrics); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal lyrics json: %w (raw: %s)", err, jsonStr)
-		}
-		if strings.TrimSpace(lyrics.Lyrics) == "" {
-			return nil, fmt.Errorf("lyrics draft is empty")
-		}
-
-		return &lyrics, nil
-	})
+	lyrics, err := generateJSON[LyricsDraft](ctx, g, "lyrics", g.resolveModel(ai.TextModel), promptText, ai.Seed)
 	if err != nil {
 		return nil, err
+	}
+	if strings.TrimSpace(lyrics.Lyrics) == "" {
+		return nil, fmt.Errorf("lyrics draft is empty")
 	}
 
 	return cloneLyricsDraft(lyrics), nil
@@ -88,42 +96,18 @@ func (g *lyriaTextGenerator) Compose(ctx context.Context, ai AIModels, lyrics *L
 		return nil, fmt.Errorf("failed to build prompt (mode: %s): %w", targetMode, err)
 	}
 
-	targetModel := g.defaultModel
-	if ai.TextModel != "" {
-		targetModel = ai.TextModel
-	}
-
-	key := singleflightKey("compose", targetModel, promptText)
-	recipe, err := doSingleflight(ctx, &g.group, key, func(execCtx context.Context) (*MusicRecipe, error) {
-		parts := []*genai.Part{{Text: promptText}}
-		opt := buildJSONGenerateOptions(ai.Seed)
-		resp, err := g.aiClient.GenerateWithParts(execCtx, targetModel, parts, opt)
-		if err != nil {
-			return nil, fmt.Errorf("AI generation failed (model: %s): %w", targetModel, err)
-		}
-		if resp == nil {
-			return nil, fmt.Errorf("AI response is nil")
-		}
-
-		rawRecipe := strings.TrimSpace(resp.Text)
-		if rawRecipe == "" {
-			return nil, fmt.Errorf("AI returned an empty string for the recipe")
-		}
-
-		jsonStr := cleanJSONResponse(rawRecipe)
-		var recipe MusicRecipe
-		if err := json.Unmarshal([]byte(jsonStr), &recipe); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal recipe json: %w (raw: %s)", err, jsonStr)
-		}
-
-		recipe.Lyrics = lyrics
-		recipe.AIModels = ai
-
-		return &recipe, nil
-	})
+	shared, err := generateJSON[MusicRecipe](ctx, g, "compose", g.resolveModel(ai.TextModel), promptText, ai.Seed)
 	if err != nil {
 		return nil, err
 	}
 
-	return cloneMusicRecipe(recipe), nil
+	// 呼び出し元固有の情報は共有結果を複製してから付与する。
+	recipe := cloneMusicRecipe(shared)
+	recipe.Lyrics = cloneLyricsDraft(lyrics)
+	recipe.AIModels = ai
+	if ai.Seed != nil {
+		seed := *ai.Seed
+		recipe.Seed = &seed
+	}
+	return recipe, nil
 }
