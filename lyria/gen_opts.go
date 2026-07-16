@@ -6,8 +6,11 @@ import (
 )
 
 // buildJSONGenerateOptions は Gemini による JSON 形式の構造化データ生成に最適化されたオプションを返します。
-func buildJSONGenerateOptions(seed *int64) gemini.GenerateOptions {
-	return buildBaseOptions(seed, "application/json")
+// schema を指定すると構造化出力（constrained decoding）が有効になり、出力が文法レベルで制約されます。
+func buildJSONGenerateOptions(seed *int64, schema *genai.Schema) gemini.GenerateOptions {
+	opts := buildBaseOptions(seed, "application/json")
+	opts.ResponseSchema = schema
+	return opts
 }
 
 // buildAudioGenerateOptions は Lyria による音声生成に最適化されたオプションを返します。

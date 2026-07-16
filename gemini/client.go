@@ -103,6 +103,9 @@ func (c *Client) buildGenerateConfig(opts GenerateOptions) (*genai.GenerateConte
 			genConfig.ResponseModalities = []string{"IMAGE"}
 		}
 	}
+	if opts.ResponseSchema != nil {
+		genConfig.ResponseSchema = opts.ResponseSchema
+	}
 	if opts.Seed != nil {
 		seed, err := seedToPtrInt32(opts.Seed)
 		if err != nil {

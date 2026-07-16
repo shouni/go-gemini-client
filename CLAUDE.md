@@ -36,7 +36,7 @@ Tests requiring GCP Application Default Credentials (Vertex AI client constructi
 ### lyria package
 
 - `Workflow` is a facade over three roles: `Lyricist`/`Composer` (both implemented by `lyriaTextGenerator`) and `AudioGenerator` (`lyriaAudioGenerator`). Prompt construction is injected by the caller via `TextPromptGenerator` and `AudioPromptBuilder` — this library contains no prompt text.
-- Text generation (lyrics and recipe) shares one generic pipeline: `generateJSON[T]` in `text.go` (singleflight → Gemini call with JSON MIME type → `cleanJSONResponse` → unmarshal).
+- Text generation (lyrics and recipe) shares one generic pipeline: `generateJSON[T]` in `text.go` (singleflight → Gemini call with JSON MIME type + `ResponseSchema` from `schemas.go` → `cleanJSONResponse` → unmarshal). The recipe schema deliberately omits `lyrics`/model fields — code attaches those after generation.
 - **Singleflight + clone pattern**: identical concurrent requests are deduplicated via `doSingleflight` (`singleflight.go`), which detaches from the caller's context (`context.WithoutCancel` + `singleflightExecTimeout`). Because results are shared across callers, every public method must return a **clone** (`cloneLyricsDraft`, `cloneMusicRecipe`, `cloneBytes`) and must not write caller-specific data into the shared result.
 - Per-call model/mode/seed selection comes from the `AIModels` argument, falling back to the models set via `New(...)` options.
 - Audio generation is rate-limited (`WithRateInterval`) and passes `Seed` through unconditionally (no backend-specific special-casing).

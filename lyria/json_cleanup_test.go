@@ -59,6 +59,22 @@ func TestCleanJSONResponse(t *testing.T) {
 			input: "{\"title\":\"test\")\n",
 			want:  `{"title":"test"}`,
 		},
+		{
+			// 本番障害の実パターン: 完結した JSON の後に余分な '}' と本文の断片が続く
+			name:  "trailing extra brace and prose after valid JSON",
+			input: "{\n  \"title\": \"調和の翼\",\n  \"narrative\": \"王道アニソン。\"\n}\n}\nアニソンファンタジー。\"\n})",
+			want:  "{\n  \"title\": \"調和の翼\",\n  \"narrative\": \"王道アニソン。\"\n}",
+		},
+		{
+			name:  "trailing prose without extra brace",
+			input: `{"title":"test"} これは補足の説明です。`,
+			want:  `{"title":"test"}`,
+		},
+		{
+			name:  "braces inside string values",
+			input: `{"lyrics":"[Verse]\n光 {影} 空"} garbage }`,
+			want:  `{"lyrics":"[Verse]\n光 {影} 空"}`,
+		},
 	}
 
 	for _, tt := range tests {

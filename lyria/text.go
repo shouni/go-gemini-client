@@ -32,11 +32,11 @@ func (g *lyriaTextGenerator) resolveModel(override string) string {
 // generateJSON は歌詞・レシピ生成で共通の「singleflight → Gemini 呼び出し → JSON デコード」
 // フローを実行します。kind はエラーメッセージと singleflight キーの識別子です。
 // 戻り値は singleflight で共有されるため、呼び出し側で複製してから返してください。
-func generateJSON[T any](ctx context.Context, g *lyriaTextGenerator, kind, model, prompt string, seed *int64) (*T, error) {
+func generateJSON[T any](ctx context.Context, g *lyriaTextGenerator, kind, model, prompt string, seed *int64, schema *genai.Schema) (*T, error) {
 	key := singleflightKey(kind, model, prompt)
 	return doSingleflight(ctx, &g.group, key, func(execCtx context.Context) (*T, error) {
 		parts := []*genai.Part{{Text: prompt}}
-		resp, err := g.aiClient.GenerateWithParts(execCtx, model, parts, buildJSONGenerateOptions(seed))
+		resp, err := g.aiClient.GenerateWithParts(execCtx, model, parts, buildJSONGenerateOptions(seed, schema))
 		if err != nil {
 			return nil, fmt.Errorf("%s generation failed (model: %s): %w", kind, model, err)
 		}
@@ -69,7 +69,7 @@ func (g *lyriaTextGenerator) GenerateLyrics(ctx context.Context, ai AIModels, in
 		return nil, fmt.Errorf("failed to build lyrics prompt: %w", err)
 	}
 
-	lyrics, err := generateJSON[LyricsDraft](ctx, g, "lyrics", g.resolveModel(ai.TextModel), promptText, ai.Seed)
+	lyrics, err := generateJSON[LyricsDraft](ctx, g, "lyrics", g.resolveModel(ai.TextModel), promptText, ai.Seed, lyricsDraftSchema())
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +96,7 @@ func (g *lyriaTextGenerator) Compose(ctx context.Context, ai AIModels, lyrics *L
 		return nil, fmt.Errorf("failed to build prompt (mode: %s): %w", targetMode, err)
 	}
 
-	shared, err := generateJSON[MusicRecipe](ctx, g, "compose", g.resolveModel(ai.TextModel), promptText, ai.Seed)
+	shared, err := generateJSON[MusicRecipe](ctx, g, "compose", g.resolveModel(ai.TextModel), promptText, ai.Seed, musicRecipeSchema())
 	if err != nil {
 		return nil, err
 	}
