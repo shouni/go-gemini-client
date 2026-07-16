@@ -12,7 +12,7 @@
 
 **Go Gemini Client** は、[shouni/netarmor](https://github.com/shouni/netarmor) をリトライ基盤に採用した、**Google Gemini API / Vertex AI** 向けの Go ライブラリです。
 
-ひとつのクライアントで、API Key 方式の **Gemini API (Google AI Studio)** と、Google Cloud 認証を使う **Vertex AI** を切り替えて利用できます。テキスト生成だけでなく、GCS URI や File API を使ったマルチモーダル入力、画像・音声レスポンス、Vertex AI 画像編集、Lyria による音楽生成ワークフローも扱えるように設計されています。
+ひとつのクライアントで、API Key 方式の **Gemini API (Google AI Studio)** と、Google Cloud 認証を使う **Vertex AI** を切り替えて利用できます。テキスト生成だけでなく、GCS URI や File API を使ったマルチモーダル入力、画像・音声レスポンス、Lyria による音楽生成ワークフローも扱えるように設計されています。
 
 ---
 
@@ -249,9 +249,6 @@ recipe, wavBytes, err := workflow.Run(ctx, lyria.AIModels{}, &lyria.CollectedCon
 - `ErrEmptyParts`: 生成パーツが空の場合。
 - `ErrInvalidPart`: 生成パーツに nil が含まれている場合。
 - `ErrInvalidSeed`: `Seed` が `int32` の範囲外の場合。
-- `ErrEmptyReferenceImages`: 参照画像が空の場合。
-- `ErrInvalidReferenceImage`: 参照画像に nil が含まれている場合。
-- `ErrUnsupportedBackend`: 現在のバックエンドでは対象 API がサポートされていない場合。
 
 ---
 
@@ -259,7 +256,7 @@ recipe, wavBytes, err := workflow.Run(ctx, lyria.AIModels{}, &lyria.CollectedCon
 
 | パッケージ | 役割 |
 | --- | --- |
-| `github.com/shouni/go-gemini-client/gemini` | Gemini / Vertex AI クライアント、リトライ、File API、画像編集、レスポンス抽出。 |
+| `github.com/shouni/go-gemini-client/gemini` | Gemini / Vertex AI クライアント、リトライ、File API、レスポンス抽出。 |
 | `github.com/shouni/go-gemini-client/lyria` | 歌詞生成、作曲レシピ生成、Lyria 音声生成の統合アダプタ。 |
 
 ---

@@ -11,11 +11,12 @@ func buildJSONGenerateOptions(seed *int64) gemini.GenerateOptions {
 }
 
 // buildAudioGenerateOptions は Lyria による音声生成に最適化されたオプションを返します。
-func buildAudioGenerateOptions(seed *int64, mimeType string) gemini.GenerateOptions {
-	return buildBaseOptions(seed, mimeType)
+// Lyria モデルはレスポンス MIME type の指定なしで音声を返すため、指定しません。
+func buildAudioGenerateOptions(seed *int64) gemini.GenerateOptions {
+	return buildBaseOptions(seed, "")
 }
 
-// buildBaseOptions は AP Comp 全体で共通の安全設定やシード値を適用したベースオプションを構築します。
+// buildBaseOptions はパッケージ共通の安全設定やシード値を適用したベースオプションを構築します。
 func buildBaseOptions(seed *int64, mimeType string) gemini.GenerateOptions {
 	opts := gemini.GenerateOptions{
 		SafetySettings: buildSafetySettings(),
@@ -29,7 +30,7 @@ func buildBaseOptions(seed *int64, mimeType string) gemini.GenerateOptions {
 	return opts
 }
 
-// buildSafetySettings は AP Comp 共通の安全性設定を返します。
+// buildSafetySettings はパッケージ共通の安全性設定を返します。
 // NOTE: 生成結果の再現性を優先するため、対応カテゴリのブロック閾値は BlockNone に統一しています。
 // 入力・出力の制御は呼び出し側または後段処理で行う前提です。
 func buildSafetySettings() []*genai.SafetySetting {

@@ -35,10 +35,8 @@ func (g *lyriaAudioGenerator) GenerateAudio(ctx context.Context, recipe *MusicRe
 
 	promptText := g.promptBuilder.BuildFullSong(recipe)
 	parts := g.buildMultiModalParts(promptText, images)
-	responseMIMEType := ""
 	imageHash := calculateImagesHash(images)
-	audioSeed := g.audioSeed(recipe.Seed)
-	key := singleflightKey("audio-full", targetModel, promptText, singleflightSeedKey(recipe.Seed), responseMIMEType, imageHash)
+	key := singleflightKey("audio-full", targetModel, promptText, singleflightSeedKey(recipe.Seed), imageHash)
 	audio, err := doSingleflight(ctx, &g.group, key, func(execCtx context.Context) ([]byte, error) {
 		if err := g.limiter.Wait(execCtx); err != nil {
 			return nil, err
@@ -48,7 +46,7 @@ func (g *lyriaAudioGenerator) GenerateAudio(ctx context.Context, recipe *MusicRe
 			execCtx,
 			targetModel,
 			parts,
-			buildAudioGenerateOptions(audioSeed, responseMIMEType),
+			buildAudioGenerateOptions(recipe.Seed),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("lyria generation failed (model: %s): %w", targetModel, err)
@@ -64,13 +62,6 @@ func (g *lyriaAudioGenerator) GenerateAudio(ctx context.Context, recipe *MusicRe
 	}
 
 	return cloneBytes(audio), nil
-}
-
-func (g *lyriaAudioGenerator) audioSeed(seed *int64) *int64 {
-	if seed != nil && g.aiClient.IsVertexAI() {
-		return nil
-	}
-	return seed
 }
 
 // buildMultiModalParts はプロンプトと画像を Lyria 入力用の Part スライスにまとめます。
