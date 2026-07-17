@@ -10,6 +10,7 @@ import (
 	"github.com/shouni/go-gemini-client/gemini"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/singleflight"
 	"golang.org/x/time/rate"
 	"google.golang.org/genai"
 )
@@ -133,6 +134,61 @@ func TestLyriaLyricistSingleflightDeduplicatesConcurrentCalls(t *testing.T) {
 	require.NotSame(t, results[0], results[1])
 	results[0].Keywords[0] = "changed"
 	assert.Equal(t, "one", results[1].Keywords[0])
+}
+
+// TestDoSingleflightCallerCancelDoesNotKillSharedExecution は、リーダー（最初の呼び出し元）が
+// キャンセルしても共有実行が打ち切られず、相乗りしている呼び出し元が完走できることを検証します。
+// 旧実装（実行用 context を呼び出し元側で生成し defer cancel()）ではリーダーの早期リターンが
+// 共有実行を巻き添えにするため、このテストは失敗します。
+func TestDoSingleflightCallerCancelDoesNotKillSharedExecution(t *testing.T) {
+	t.Parallel()
+
+	var group singleflight.Group
+	release := make(chan struct{})
+	started := make(chan struct{})
+	var once sync.Once
+	fn := func(execCtx context.Context) (string, error) {
+		once.Do(func() { close(started) })
+		select {
+		case <-release:
+			return "ok", nil
+		case <-execCtx.Done():
+			return "", execCtx.Err()
+		}
+	}
+
+	// リーダーA: 実行開始後にキャンセルする
+	ctxA, cancelA := context.WithCancel(context.Background())
+	errA := make(chan error, 1)
+	go func() {
+		_, err := doSingleflight(ctxA, &group, "same-key", fn)
+		errA <- err
+	}()
+	<-started
+
+	// 相乗りB: 同一キーで in-flight に合流し、完走を期待する
+	type result struct {
+		val string
+		err error
+	}
+	resB := make(chan result, 1)
+	go func() {
+		v, err := doSingleflight(context.Background(), &group, "same-key", fn)
+		resB <- result{v, err}
+	}()
+
+	time.Sleep(20 * time.Millisecond) // B が合流するまで待つ
+	cancelA()
+	require.ErrorIs(t, <-errA, context.Canceled)
+
+	close(release)
+	select {
+	case r := <-resB:
+		require.NoError(t, r.err, "shared execution was killed by leader's cancel")
+		require.Equal(t, "ok", r.val)
+	case <-time.After(5 * time.Second):
+		t.Fatal("caller B timed out")
+	}
 }
 
 func TestCloneMusicRecipeDeepCopiesPointerFields(t *testing.T) {
