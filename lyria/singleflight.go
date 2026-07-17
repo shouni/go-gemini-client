@@ -59,10 +59,15 @@ func calculateImagesHash(images []ImagePayload) string {
 }
 
 // doSingleflight は同じ key の同時実行をまとめ、呼び出し元のキャンセルも尊重します。
+// 実行用 context は共有実行のクロージャ内で呼び出し元から切り離して（WithoutCancel）
+// 生成します。呼び出し元側で生成すると、リーダー（最初の呼び出し元）がキャンセルして
+// 早期リターンした際に defer cancel() が共有実行を打ち切り、相乗りしている他の
+// 呼び出し元が巻き添えになるためです。実行の打ち切りは singleflightExecTimeout でのみ
+// 行われます。
 func doSingleflight[T any](ctx context.Context, group *singleflight.Group, key string, fn func(execCtx context.Context) (T, error)) (T, error) {
-	execCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), singleflightExecTimeout)
-	defer cancel()
 	ch := group.DoChan(key, func() (any, error) {
+		execCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), singleflightExecTimeout)
+		defer cancel()
 		return fn(execCtx)
 	})
 
