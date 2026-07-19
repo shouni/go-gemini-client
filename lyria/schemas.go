@@ -46,7 +46,7 @@ func musicRecipeSchema() *genai.Schema {
 						"end_seconds":      {Type: genai.TypeInteger},
 						"prompt":           {Type: genai.TypeString},
 					},
-					Required: []string{"name", "duration_seconds", "prompt"},
+					Required: []string{"name", "duration_seconds", "start_seconds", "end_seconds", "prompt"},
 				},
 			},
 		},
