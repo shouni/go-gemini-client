@@ -34,6 +34,9 @@ func (g *lyriaAudioGenerator) GenerateAudio(ctx context.Context, recipe *MusicRe
 	}
 
 	promptText := g.promptBuilder.BuildFullSong(recipe)
+	if recipe.IsJapanese() {
+		promptText = g.converter.ConvertToReading(promptText)
+	}
 	parts := g.buildMultiModalParts(promptText, images)
 	imageHash := calculateImagesHash(images)
 	key := singleflightKey("audio-full", targetModel, promptText, singleflightSeedKey(recipe.Seed), imageHash)
@@ -65,10 +68,10 @@ func (g *lyriaAudioGenerator) GenerateAudio(ctx context.Context, recipe *MusicRe
 }
 
 // buildMultiModalParts はプロンプトと画像を Lyria 入力用の Part スライスにまとめます。
+// プロンプトの読み変換は言語判定を伴うため、呼び出し元で適用済みであることを前提とします。
 func (g *lyriaAudioGenerator) buildMultiModalParts(prompt string, images []ImagePayload) []*genai.Part {
 	parts := make([]*genai.Part, 0, len(images)+1)
-	safePrompt := g.converter.ConvertToReading(prompt)
-	parts = append(parts, &genai.Part{Text: safePrompt})
+	parts = append(parts, &genai.Part{Text: prompt})
 
 	for _, img := range images {
 		if len(img.Data) == 0 {

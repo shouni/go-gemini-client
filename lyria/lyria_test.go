@@ -312,6 +312,40 @@ func TestNewUsesReadingConverterOption(t *testing.T) {
 	mAI.AssertExpectations(t)
 }
 
+func TestGenerateAudioSkipsReadingConverterForEnglish(t *testing.T) {
+	ctx := context.Background()
+	mAI := new(MockGeminiClient)
+	mPrompt := new(MockPromptGen)
+
+	workflow, err := New(mAI, mPrompt, fixedAudioPromptBuilder{fullSong: "english full prompt"},
+		WithGeminiModel("gemini-flash"),
+		WithLyriaModel("lyria-3"),
+		WithRateInterval(0),
+		WithReadingConverter(fixedReadingConverter{output: "converted prompt"}),
+	)
+	assert.NoError(t, err)
+
+	// Lang が "en" の場合、ReadingConverter を通さず元のプロンプトが使われること
+	mAI.On("GenerateWithParts",
+		mock.Anything,
+		"lyria-3",
+		partsWithText(t, "english full prompt"),
+		mock.Anything,
+	).Return(&gemini.Response{Audios: [][]byte{{1, 2, 3}}}, nil)
+
+	audio, err := workflow.GenerateAudio(ctx, &MusicRecipe{Title: "Song", AIModels: AIModels{Lang: LangEnglish}}, nil)
+
+	assert.NoError(t, err)
+	assert.Equal(t, []byte{1, 2, 3}, audio)
+	mAI.AssertExpectations(t)
+}
+
+func TestMusicRecipeIsJapanese(t *testing.T) {
+	assert.True(t, (&MusicRecipe{}).IsJapanese(), "Lang 未指定は日本語扱い")
+	assert.True(t, (&MusicRecipe{AIModels: AIModels{Lang: LangJapanese}}).IsJapanese())
+	assert.False(t, (&MusicRecipe{AIModels: AIModels{Lang: LangEnglish}}).IsJapanese())
+}
+
 func TestGenerateAudioKeepsSeed(t *testing.T) {
 	ctx := context.Background()
 	mAI := new(MockGeminiClient)

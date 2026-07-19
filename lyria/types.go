@@ -7,6 +7,8 @@ type AIModels struct {
 	LyricsMode  string
 	ComposeMode string
 	Seed        *int64
+	// Lang は歌詞・ボーカルの言語コードです（"ja" / "en"）。空は "ja" 扱いです。
+	Lang string `json:"lang,omitempty"`
 }
 
 // LyricsDraft is the structured lyric output used by recipe composition.
@@ -20,6 +22,12 @@ type LyricsDraft struct {
 	Narrative string   `json:"narrative,omitempty"`
 }
 
+// LangJapanese と LangEnglish は MusicRecipe.Lang に指定できる言語コードです。
+const (
+	LangJapanese = "ja"
+	LangEnglish  = "en"
+)
+
 // MusicRecipe describes the song structure and generation settings.
 type MusicRecipe struct {
 	Title        string         `json:"title"`
@@ -32,6 +40,11 @@ type MusicRecipe struct {
 	Sections     []MusicSection `json:"sections"`
 	Lyrics       *LyricsDraft   `json:"lyrics,omitempty"`
 	AIModels
+}
+
+// IsJapanese は、このレシピが日本語楽曲かどうかを返します。Lang 未指定は日本語扱いです。
+func (r *MusicRecipe) IsJapanese() bool {
+	return r.Lang == "" || r.Lang == LangJapanese
 }
 
 // MusicSection describes one section of a song.
