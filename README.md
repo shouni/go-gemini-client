@@ -30,12 +30,14 @@
 - **リトライ不要エラーの判定**: セーフティフィルタによるブロックや空レスポンスなど、再試行しても解決しにくい API レスポンスエラーを識別します。
 - **決定論的な制御**: `Seed` により、生成結果の再現性を必要とするワークフローをサポートします。
 - **型安全なエラー判定**: 設定不備や入力不備はセンチネルエラーとして公開しており、`errors.Is` で判定できます。
+- **ストリーミング生成**: `GenerateContentStream` / `GenerateWithPartsStream` で `iter.Seq2` によるチャンク単位のレスポンスを受け取れます。
+- **トークン数の事前計測**: `CountTokens` / `CountTokensWithParts` で、実際に生成せずにプロンプトのトークン数を見積もれます。
 
 ### 📁 高度なリソース管理
 
 - **File API サポート**: ファイルアップロード後、利用可能な `Active` 状態になるまで自動でポーリングします。
 - **自動クリーンアップ**: Active 化に失敗した File API オブジェクトはバックグラウンドで削除を試みます。
-- **レスポンス抽出**: テキスト、生成画像、生成音声を `gemini.Response` にまとめて返します。
+- **レスポンス抽出**: テキスト、生成画像、生成音声、トークン使用量 (`Usage`) を `gemini.Response` にまとめて返します。
 
 ### 🎼 Lyria ワークフロー (`lyria`)
 
@@ -184,6 +186,42 @@ resp, err := client.GenerateWithParts(ctx, "gemini-2.5-flash", []*genai.Part{
 
 ---
 
+## 📶 ストリーミング生成
+
+`GenerateContentStream` / `GenerateWithPartsStream` は、genai SDK の `iter.Seq2` をそのまま `gemini.Response` のストリームに変換して返します。チャンク単位でエラーが発生した場合は、そのチャンクの `error` 戻り値として伝播します（ストリーム開始後のリトライは行いません）。
+
+```go
+seq, err := client.GenerateContentStream(ctx, "gemini-2.5-flash", "Goについて3行で説明して")
+if err != nil {
+	return err
+}
+
+for resp, err := range seq {
+	if err != nil {
+		return err
+	}
+	fmt.Print(resp.Text)
+}
+```
+
+---
+
+## 🔢 トークン数の計測
+
+`CountTokens` / `CountTokensWithParts` は、実際に生成を行わずにプロンプトのトークン数だけを計測します。事前のコスト見積もりやコンテキスト長の検証に使えます。
+
+```go
+total, err := client.CountTokens(ctx, "gemini-2.5-flash", "Goについて3行で説明して")
+if err != nil {
+	return err
+}
+fmt.Println("推定トークン数:", total)
+```
+
+生成レスポンス自体のトークン使用量は `Response.Usage`（`PromptTokenCount` / `CandidatesTokenCount` / `TotalTokenCount`）から参照できます。
+
+---
+
 ## 🎵 Lyria Workflow
 
 `lyria` パッケージは、歌詞生成・作曲レシピ生成・Lyria 音声生成を束ねるファサードです。利用側で `TextPromptGenerator` と `AudioPromptBuilder` を実装し、プロダクト固有のプロンプト設計を差し込めます。
@@ -204,6 +242,8 @@ recipe, wavBytes, err := workflow.Run(ctx, lyria.AIModels{}, &lyria.CollectedCon
 	Prompt: "夜の東京を走るシンセポップ",
 })
 ```
+
+`WithRateInterval` は音声生成（Lyria 呼び出し）、`WithTextRateInterval` は歌詞・レシピ生成（Gemini 呼び出し）のレート制限間隔をそれぞれ設定します。いずれも未設定（ゼロ値）の場合はレート制限を行いません。
 
 ---
 

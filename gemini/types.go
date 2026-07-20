@@ -71,7 +71,15 @@ type Response struct {
 	Text        string
 	Images      [][]byte // 生成画像 (InlineData) を保持します
 	Audios      [][]byte // Lyria 3 等の音声データ
+	Usage       *TokenUsage
 	RawResponse *genai.GenerateContentResponse
+}
+
+// TokenUsage は生成レスポンスのトークン使用量です。
+type TokenUsage struct {
+	PromptTokenCount     int32
+	CandidatesTokenCount int32
+	TotalTokenCount      int32
 }
 
 // HasImageConfig は、画像生成特有のパラメータが1つでも設定されているかを判定します。

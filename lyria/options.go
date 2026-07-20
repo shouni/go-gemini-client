@@ -6,6 +6,7 @@ type options struct {
 	geminiModel      string
 	lyriaModel       string
 	rateInterval     time.Duration
+	textRateInterval time.Duration
 	readingConverter ReadingConverter
 }
 
@@ -37,6 +38,14 @@ func WithReadingConverter(converter ReadingConverter) Option {
 func WithRateInterval(value time.Duration) Option {
 	return func(opts *options) {
 		opts.rateInterval = value
+	}
+}
+
+// WithTextRateInterval sets the interval used by the lyrics/recipe (text) generation rate limiter.
+// Unset (zero value) means no rate limiting, matching the default behavior of WithRateInterval.
+func WithTextRateInterval(value time.Duration) Option {
+	return func(opts *options) {
+		opts.textRateInterval = value
 	}
 }
 

@@ -50,7 +50,7 @@ func shouldRetry(err error) bool {
 		}
 	}
 
-	// gRPCエラー以外（ネットワーク接続エラー、EOFなど）は一時的な障害の可能性があるためリトライを許可します。
+	// APIError に分類されないエラー（ネットワーク接続エラー、EOFなど）は一時的な障害の可能性があるためリトライを許可します。
 	if errors.Is(err, io.EOF) {
 		return true
 	}
@@ -61,9 +61,14 @@ func shouldRetry(err error) bool {
 	return false
 }
 
-// extractTextFromResponse はレスポンスからテキストを抽出し、異常な終了理由がないか確認します。
-func extractTextFromResponse(resp *genai.GenerateContentResponse) (string, error) {
+// extractText は resp からテキストを抽出します。lenient が true の場合、候補が
+// 空でもエラーにしません（ストリーミングの中間チャンクには usageMetadata のみを
+// 運ぶものがあり、そこでは候補が空になるのが正常なため）。
+func extractText(resp *genai.GenerateContentResponse, lenient bool) (string, error) {
 	if resp == nil || len(resp.Candidates) == 0 {
+		if lenient {
+			return "", nil
+		}
 		return "", &APIResponseError{msg: "Gemini APIから空のレスポンスが返されました"}
 	}
 
@@ -87,6 +92,18 @@ func extractTextFromResponse(resp *genai.GenerateContentResponse) (string, error
 	}
 
 	return "", nil
+}
+
+// tokenUsageFromMetadata は genai のトークン使用量メタデータを公開型に変換します。
+func tokenUsageFromMetadata(meta *genai.GenerateContentResponseUsageMetadata) *TokenUsage {
+	if meta == nil {
+		return nil
+	}
+	return &TokenUsage{
+		PromptTokenCount:     meta.PromptTokenCount,
+		CandidatesTokenCount: meta.CandidatesTokenCount,
+		TotalTokenCount:      meta.TotalTokenCount,
+	}
 }
 
 // seedToPtrInt32 は *int64 を SDK 用の *int32 に変換します。

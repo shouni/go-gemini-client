@@ -35,6 +35,7 @@ func New(aiClient gemini.Generator, promptGen TextPromptGenerator, audioPromptBu
 	}
 
 	limiter := rate.NewLimiter(rate.Every(opts.rateInterval), 1)
+	textLimiter := rate.NewLimiter(rate.Every(opts.textRateInterval), 1)
 
 	converter := opts.readingConverter
 	if converter == nil {
@@ -45,6 +46,7 @@ func New(aiClient gemini.Generator, promptGen TextPromptGenerator, audioPromptBu
 		aiClient:     aiClient,
 		promptGen:    promptGen,
 		defaultModel: opts.geminiModel,
+		limiter:      textLimiter,
 	}
 
 	return &Workflow{
