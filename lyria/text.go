@@ -8,6 +8,7 @@ import (
 
 	"github.com/shouni/go-gemini-client/gemini"
 	"golang.org/x/sync/singleflight"
+	"golang.org/x/time/rate"
 	"google.golang.org/genai"
 )
 
@@ -18,6 +19,7 @@ type lyriaTextGenerator struct {
 	aiClient     gemini.Generator
 	promptGen    TextPromptGenerator
 	defaultModel string
+	limiter      *rate.Limiter // nil の場合はレート制限しない（構造体リテラルでの直接構築との後方互換のため）
 	group        singleflight.Group
 }
 
@@ -35,6 +37,12 @@ func (g *lyriaTextGenerator) resolveModel(override string) string {
 func generateJSON[T any](ctx context.Context, g *lyriaTextGenerator, kind, model, prompt string, seed *int64, schema *genai.Schema) (*T, error) {
 	key := singleflightKey(kind, model, prompt)
 	return doSingleflight(ctx, &g.group, key, func(execCtx context.Context) (*T, error) {
+		if g.limiter != nil {
+			if err := g.limiter.Wait(execCtx); err != nil {
+				return nil, err
+			}
+		}
+
 		parts := []*genai.Part{{Text: prompt}}
 		resp, err := g.aiClient.GenerateWithParts(execCtx, model, parts, buildJSONGenerateOptions(seed, schema))
 		if err != nil {

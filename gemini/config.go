@@ -81,6 +81,14 @@ func (c Config) toClientConfig() *genai.ClientConfig {
 	return cc
 }
 
+// orDefault は v が正の値であればそれを、そうでなければ def を返します。
+func orDefault(v, def time.Duration) time.Duration {
+	if v > 0 {
+		return v
+	}
+	return def
+}
+
 // buildRetryConfig は設定から retry.Config を構築します。
 func (c Config) buildRetryConfig() retry.Config {
 	rc := retry.DefaultConfig()
@@ -91,31 +99,16 @@ func (c Config) buildRetryConfig() retry.Config {
 		rc.MaxRetries = DefaultMaxRetries
 	}
 
-	if c.InitialDelay > 0 {
-		rc.InitialInterval = c.InitialDelay
-	} else {
-		rc.InitialInterval = DefaultInitialDelay
-	}
-
-	if c.MaxDelay > 0 {
-		rc.MaxInterval = c.MaxDelay
-	} else {
-		rc.MaxInterval = DefaultMaxDelay
-	}
+	rc.InitialInterval = orDefault(c.InitialDelay, DefaultInitialDelay)
+	rc.MaxInterval = orDefault(c.MaxDelay, DefaultMaxDelay)
 
 	return rc
 }
 
 func (c Config) getFilePollingInterval() time.Duration {
-	if c.FilePollingInterval > 0 {
-		return c.FilePollingInterval
-	}
-	return PollingInterval
+	return orDefault(c.FilePollingInterval, PollingInterval)
 }
 
 func (c Config) getFilePollingTimeout() time.Duration {
-	if c.FilePollingTimeout > 0 {
-		return c.FilePollingTimeout
-	}
-	return PollingTimeout
+	return orDefault(c.FilePollingTimeout, PollingTimeout)
 }

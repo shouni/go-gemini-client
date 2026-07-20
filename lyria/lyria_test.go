@@ -3,6 +3,7 @@ package lyria
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/shouni/go-gemini-client/gemini"
 	"github.com/stretchr/testify/assert"
@@ -283,6 +284,34 @@ func TestNewUsesAudioPromptBuilder(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, []byte{1, 2, 3}, audio)
 	mAI.AssertExpectations(t)
+}
+
+func TestNewUsesTextRateInterval(t *testing.T) {
+	ctx := context.Background()
+	mAI := new(MockGeminiClient)
+	mPrompt := new(MockPromptGen)
+
+	workflow, err := New(mAI, mPrompt, fixedAudioPromptBuilder{fullSong: "full prompt"},
+		WithGeminiModel("gemini-flash"),
+		WithLyriaModel("lyria-3"),
+		WithRateInterval(0),
+		WithTextRateInterval(50*time.Millisecond),
+	)
+	assert.NoError(t, err)
+
+	mPrompt.On("GenerateLyrics", mock.Anything, mock.Anything).Return("prompt-text", nil)
+	mAI.On("GenerateWithParts", mock.Anything, "gemini-flash", mock.Anything, mock.Anything).Return(&gemini.Response{
+		Text: `{"title":"t","theme":"th","hook":"h","lyrics":"l"}`,
+	}, nil).Twice()
+
+	start := time.Now()
+	_, err = workflow.GenerateLyrics(ctx, AIModels{}, &CollectedContent{Prompt: "first"})
+	assert.NoError(t, err)
+	_, err = workflow.GenerateLyrics(ctx, AIModels{}, &CollectedContent{Prompt: "second"})
+	assert.NoError(t, err)
+	elapsed := time.Since(start)
+
+	assert.GreaterOrEqual(t, elapsed, 50*time.Millisecond, "2回目の呼び出しはレート制限で待機するはずです")
 }
 
 func TestNewUsesReadingConverterOption(t *testing.T) {
