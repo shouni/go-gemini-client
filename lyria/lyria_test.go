@@ -412,7 +412,7 @@ func TestGenerateLyrics_ErrorBranches(t *testing.T) {
 	}{
 		{
 			name: "prompt generation fails",
-			setup: func(mAI *MockGeminiClient, mPrompt *MockPromptGen) {
+			setup: func(_ *MockGeminiClient, mPrompt *MockPromptGen) {
 				mPrompt.On("GenerateLyrics", mock.Anything, mock.Anything).Return("", errors.New("prompt boom"))
 			},
 			wantErr: "failed to build lyrics prompt",
@@ -491,7 +491,7 @@ func TestCompose_ErrorBranches(t *testing.T) {
 	}{
 		{
 			name: "prompt generation fails",
-			setup: func(mAI *MockGeminiClient, mPrompt *MockPromptGen) {
+			setup: func(_ *MockGeminiClient, mPrompt *MockPromptGen) {
 				mPrompt.On("GenerateRecipe", mock.Anything, mock.Anything).Return("", errors.New("prompt boom"))
 			},
 			wantErr: "failed to build prompt",
