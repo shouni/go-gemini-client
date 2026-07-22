@@ -89,3 +89,15 @@ func (o *GenerateOptions) HasImageConfig() bool {
 	}
 	return o.AspectRatio != "" || o.ImageSize != "" || o.PersonGeneration != PersonGenerationUnspecified
 }
+
+// NewSafetySettings は、標準的な4つのハームカテゴリ（暴力・ヘイト・性的表現・危険行為）
+// すべてに同一の閾値を適用した SafetySetting のスライスを返します。
+// 閾値をバックエンドや用途に応じてどう選ぶかは呼び出し側の判断に委ねます。
+func NewSafetySettings(threshold genai.HarmBlockThreshold) []*genai.SafetySetting {
+	return []*genai.SafetySetting{
+		{Category: genai.HarmCategoryHarassment, Threshold: threshold},
+		{Category: genai.HarmCategoryHateSpeech, Threshold: threshold},
+		{Category: genai.HarmCategorySexuallyExplicit, Threshold: threshold},
+		{Category: genai.HarmCategoryDangerousContent, Threshold: threshold},
+	}
+}
