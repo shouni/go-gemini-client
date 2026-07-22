@@ -15,7 +15,6 @@ type ContentGenerator interface {
 
 // Generator は、コンテンツ生成機能を担うインターフェースです。
 type Generator interface {
-	ContentGenerator
 	GenerateWithParts(ctx context.Context, modelName string, parts []*genai.Part, opts GenerateOptions) (*Response, error)
 	IsVertexAI() bool
 }
