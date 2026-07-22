@@ -285,6 +285,18 @@ opts := gemini.GenerateOptions{
 }
 ```
 
+`ResponseSchema` + `ResponseMIMEType: "application/json"` による構造化出力（constrained decoding）を使っても、モデルが完結した JSON の後に余分な閉じ括弧や説明テキストを継ぎ足すことが実際にあります。`json.Unmarshal` の前段で `gemini.CleanJSONResponse(raw)` を通すと、こうした末尾ノイズを除去・補正できます。
+
+```go
+resp, err := client.GenerateWithParts(ctx, model, parts, opts)
+// ...
+var out MyStruct
+jsonStr := gemini.CleanJSONResponse(resp.Text)
+if err := json.Unmarshal([]byte(jsonStr), &out); err != nil {
+    // ...
+}
+```
+
 ---
 
 ## 📜 エラーハンドリング

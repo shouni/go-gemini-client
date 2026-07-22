@@ -57,7 +57,7 @@ func generateJSON[T any](ctx context.Context, g *lyriaTextGenerator, kind, model
 			return nil, fmt.Errorf("AI returned an empty string for the %s", kind)
 		}
 
-		jsonStr := cleanJSONResponse(raw)
+		jsonStr := gemini.CleanJSONResponse(raw)
 		var out T
 		if err := json.Unmarshal([]byte(jsonStr), &out); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal %s json: %w (raw: %s)", kind, err, jsonStr)

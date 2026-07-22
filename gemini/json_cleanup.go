@@ -1,12 +1,16 @@
-package lyria
+package gemini
 
 import (
 	"encoding/json"
 	"strings"
 )
 
-// cleanJSONResponse は LLM が出力しがちな Markdown の装飾や末尾ノイズを除去・補正します。
-func cleanJSONResponse(input string) string {
+// CleanJSONResponse は、GenerateOptions.ResponseSchema による構造化出力を使っても
+// なお LLM が出力しがちな Markdown の装飾や末尾ノイズを除去・補正します。
+// responseMimeType に "application/json" を指定しても、モデルが完結した JSON の後に
+// 余分な閉じ括弧や説明テキストを継ぎ足すケースが実際に確認されているため、
+// json.Unmarshal の前段でこの関数を通すことを推奨します。
+func CleanJSONResponse(input string) string {
 	start := strings.Index(input, "{")
 	if start == -1 {
 		return input
