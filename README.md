@@ -277,6 +277,14 @@ recipe, wavBytes, err := workflow.Run(ctx, lyria.AIModels{}, &lyria.CollectedCon
 | `ResponseMIMEType` | `image/png` や `audio/wav` など、期待するレスポンス MIME type を指定します。 |
 | `ResponseSchema` | 構造化出力（constrained decoding）のスキーマ。`application/json` と併用すると、出力が文法レベルでスキーマに制約されます。 |
 
+標準的な4つのハームカテゴリ（暴力・ヘイト・性的表現・危険行為）すべてに同一の閾値を適用したい場合は、`gemini.NewSafetySettings(threshold)` ヘルパーを使うと `SafetySettings` を簡潔に構築できます。閾値をバックエンドや用途に応じてどう選ぶかは呼び出し側の判断に委ねています。
+
+```go
+opts := gemini.GenerateOptions{
+    SafetySettings: gemini.NewSafetySettings(genai.HarmBlockThresholdBlockNone),
+}
+```
+
 ---
 
 ## 📜 エラーハンドリング
