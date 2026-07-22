@@ -13,6 +13,16 @@ import (
 	"google.golang.org/genai"
 )
 
+// Client がパッケージ公開インターフェースを満たすことをコンパイル時に保証します。
+// これらのアサーションがないと、Client のメソッドシグネチャがドリフトしても
+// 下流の利用側がビルドされるまで気付けません。
+var (
+	_ ContentGenerator = (*Client)(nil)
+	_ GenerativeModel  = (*Client)(nil)
+	_ StreamGenerator  = (*Client)(nil)
+	_ TokenCounter     = (*Client)(nil)
+)
+
 // Client は Gemini SDK をラップしたメイン構造体です。
 type Client struct {
 	modelClient         modelClient

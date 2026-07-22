@@ -41,8 +41,11 @@ func (g *lyriaAudioGenerator) GenerateAudio(ctx context.Context, recipe *MusicRe
 	imageHash := calculateImagesHash(images)
 	key := singleflightKey("audio-full", targetModel, promptText, singleflightSeedKey(recipe.Seed), imageHash)
 	audio, err := doSingleflight(ctx, &g.group, key, func(execCtx context.Context) ([]byte, error) {
-		if err := g.limiter.Wait(execCtx); err != nil {
-			return nil, err
+		// limiter が nil の場合はレート制限しない（構造体リテラルでの直接構築との後方互換のため）。
+		if g.limiter != nil {
+			if err := g.limiter.Wait(execCtx); err != nil {
+				return nil, err
+			}
 		}
 
 		resp, err := g.aiClient.GenerateWithParts(

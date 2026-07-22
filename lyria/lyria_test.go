@@ -2,6 +2,8 @@ package lyria
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -367,6 +369,183 @@ func TestGenerateAudioSkipsReadingConverterForEnglish(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, []byte{1, 2, 3}, audio)
 	mAI.AssertExpectations(t)
+}
+
+// 構造体リテラルで limiter を省略（nil）した lyriaAudioGenerator でも
+// GenerateAudio がパニックせず動作することを確認します（text.go と同じ nil ガード）。
+func TestGenerateAudioNilLimiterDoesNotPanic(t *testing.T) {
+	ctx := context.Background()
+	mAI := new(MockGeminiClient)
+	generator := &lyriaAudioGenerator{
+		aiClient:          mAI,
+		promptBuilder:     fixedAudioPromptBuilder{fullSong: "full prompt"},
+		converter:         noopPhoneticConverter{},
+		defaultLyriaModel: "lyria-3",
+		// limiter は意図的に nil のまま
+	}
+
+	mAI.On("GenerateWithParts",
+		mock.Anything,
+		"lyria-3",
+		partsWithText(t, "full prompt"),
+		mock.Anything,
+	).Return(&gemini.Response{Audios: [][]byte{{1, 2, 3}}}, nil)
+
+	audio, err := generator.GenerateAudio(ctx, &MusicRecipe{Title: "Song"}, nil)
+
+	assert.NoError(t, err)
+	assert.Equal(t, []byte{1, 2, 3}, audio)
+	mAI.AssertExpectations(t)
+}
+
+// GenerateLyrics の各エラー分岐（プロンプト生成失敗、AI エラー、nil/空レスポンス、
+// 生成後の歌詞空チェック）を、AI が「ゴミ」を返す想定でまとめて検証します。
+func TestGenerateLyrics_ErrorBranches(t *testing.T) {
+	ctx := context.Background()
+	const model = "gemini-flash"
+	input := &CollectedContent{Prompt: "context text"}
+
+	tests := []struct {
+		name    string
+		setup   func(mAI *MockGeminiClient, mPrompt *MockPromptGen)
+		wantErr string
+	}{
+		{
+			name: "prompt generation fails",
+			setup: func(_ *MockGeminiClient, mPrompt *MockPromptGen) {
+				mPrompt.On("GenerateLyrics", mock.Anything, mock.Anything).Return("", errors.New("prompt boom"))
+			},
+			wantErr: "failed to build lyrics prompt",
+		},
+		{
+			name: "AI returns an error",
+			setup: func(mAI *MockGeminiClient, mPrompt *MockPromptGen) {
+				mPrompt.On("GenerateLyrics", mock.Anything, mock.Anything).Return("p", nil)
+				mAI.On("GenerateWithParts", mock.Anything, model, mock.Anything, mock.Anything).
+					Return(nil, errors.New("ai boom"))
+			},
+			wantErr: "lyrics generation failed",
+		},
+		{
+			name: "AI returns a nil response",
+			setup: func(mAI *MockGeminiClient, mPrompt *MockPromptGen) {
+				mPrompt.On("GenerateLyrics", mock.Anything, mock.Anything).Return("p", nil)
+				mAI.On("GenerateWithParts", mock.Anything, model, mock.Anything, mock.Anything).
+					Return((*gemini.Response)(nil), nil)
+			},
+			wantErr: "lyrics response is nil",
+		},
+		{
+			name: "AI returns an empty string",
+			setup: func(mAI *MockGeminiClient, mPrompt *MockPromptGen) {
+				mPrompt.On("GenerateLyrics", mock.Anything, mock.Anything).Return("p", nil)
+				mAI.On("GenerateWithParts", mock.Anything, model, mock.Anything, mock.Anything).
+					Return(&gemini.Response{Text: "   "}, nil)
+			},
+			wantErr: "AI returned an empty string",
+		},
+		{
+			name: "schema-valid JSON but empty lyrics",
+			setup: func(mAI *MockGeminiClient, mPrompt *MockPromptGen) {
+				mPrompt.On("GenerateLyrics", mock.Anything, mock.Anything).Return("p", nil)
+				mAI.On("GenerateWithParts", mock.Anything, model, mock.Anything, mock.Anything).
+					Return(&gemini.Response{Text: `{"title":"t","theme":"th","lyrics":""}`}, nil)
+			},
+			wantErr: "lyrics draft is empty",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mAI := new(MockGeminiClient)
+			mPrompt := new(MockPromptGen)
+			tt.setup(mAI, mPrompt)
+
+			g := &lyriaTextGenerator{
+				aiClient:     mAI,
+				promptGen:    mPrompt,
+				defaultModel: model,
+			}
+
+			_, err := g.GenerateLyrics(ctx, AIModels{}, input)
+			if assert.Error(t, err) {
+				assert.True(t, strings.Contains(err.Error(), tt.wantErr),
+					"err = %q, want substring %q", err.Error(), tt.wantErr)
+			}
+			mAI.AssertExpectations(t)
+			mPrompt.AssertExpectations(t)
+		})
+	}
+}
+
+// Compose のエラー分岐（プロンプト生成失敗、AI エラー、nil/空レスポンス）を検証します。
+func TestCompose_ErrorBranches(t *testing.T) {
+	ctx := context.Background()
+	const model = "gemini-flash"
+	lyrics := &LyricsDraft{Title: "t", Lyrics: "l"}
+
+	tests := []struct {
+		name    string
+		setup   func(mAI *MockGeminiClient, mPrompt *MockPromptGen)
+		wantErr string
+	}{
+		{
+			name: "prompt generation fails",
+			setup: func(_ *MockGeminiClient, mPrompt *MockPromptGen) {
+				mPrompt.On("GenerateRecipe", mock.Anything, mock.Anything).Return("", errors.New("prompt boom"))
+			},
+			wantErr: "failed to build prompt",
+		},
+		{
+			name: "AI returns an error",
+			setup: func(mAI *MockGeminiClient, mPrompt *MockPromptGen) {
+				mPrompt.On("GenerateRecipe", mock.Anything, mock.Anything).Return("p", nil)
+				mAI.On("GenerateWithParts", mock.Anything, model, mock.Anything, mock.Anything).
+					Return(nil, errors.New("ai boom"))
+			},
+			wantErr: "compose generation failed",
+		},
+		{
+			name: "AI returns a nil response",
+			setup: func(mAI *MockGeminiClient, mPrompt *MockPromptGen) {
+				mPrompt.On("GenerateRecipe", mock.Anything, mock.Anything).Return("p", nil)
+				mAI.On("GenerateWithParts", mock.Anything, model, mock.Anything, mock.Anything).
+					Return((*gemini.Response)(nil), nil)
+			},
+			wantErr: "compose response is nil",
+		},
+		{
+			name: "AI returns an empty string",
+			setup: func(mAI *MockGeminiClient, mPrompt *MockPromptGen) {
+				mPrompt.On("GenerateRecipe", mock.Anything, mock.Anything).Return("p", nil)
+				mAI.On("GenerateWithParts", mock.Anything, model, mock.Anything, mock.Anything).
+					Return(&gemini.Response{Text: ""}, nil)
+			},
+			wantErr: "AI returned an empty string",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mAI := new(MockGeminiClient)
+			mPrompt := new(MockPromptGen)
+			tt.setup(mAI, mPrompt)
+
+			g := &lyriaTextGenerator{
+				aiClient:     mAI,
+				promptGen:    mPrompt,
+				defaultModel: model,
+			}
+
+			_, err := g.Compose(ctx, AIModels{}, lyrics)
+			if assert.Error(t, err) {
+				assert.True(t, strings.Contains(err.Error(), tt.wantErr),
+					"err = %q, want substring %q", err.Error(), tt.wantErr)
+			}
+			mAI.AssertExpectations(t)
+			mPrompt.AssertExpectations(t)
+		})
+	}
 }
 
 func TestMusicRecipeIsJapanese(t *testing.T) {

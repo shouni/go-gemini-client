@@ -82,6 +82,8 @@ func doSingleflight[T any](ctx context.Context, group *singleflight.Group, key s
 		}
 
 		value, ok := result.Val.(T)
+		// fn の静的な型付けにより result.Val は常に T なので、この分岐は実際には到達しない。
+		// 将来のリファクタリングに対する防御として意図的に残している。
 		if !ok {
 			var zero T
 			return zero, fmt.Errorf("singleflight result type mismatch for key %s", key)
