@@ -88,12 +88,15 @@ func TestConfig_ToClientConfig(t *testing.T) {
 	})
 }
 
-func TestConfig_buildRetryConfig(t *testing.T) {
+func TestConfig_retryParams(t *testing.T) {
 	t.Run("デフォルト値が適用されること", func(t *testing.T) {
 		cfg := Config{}
-		got := cfg.buildRetryConfig()
-		if got.MaxRetries != DefaultMaxRetries {
+		got := cfg.retryParams()
+		if got.MaxRetries != clampToUint(DefaultMaxRetries) {
 			t.Errorf("MaxRetries = %v, want %v", got.MaxRetries, DefaultMaxRetries)
+		}
+		if got.InitialInterval != DefaultInitialDelay || got.MaxInterval != DefaultMaxDelay {
+			t.Errorf("インターバルのデフォルトが適用されていません: %+v", got)
 		}
 	})
 
@@ -103,9 +106,16 @@ func TestConfig_buildRetryConfig(t *testing.T) {
 			InitialDelay: 10 * time.Second,
 			MaxDelay:     60 * time.Second,
 		}
-		got := cfg.buildRetryConfig()
+		got := cfg.retryParams()
 		if got.MaxRetries != 5 || got.InitialInterval != 10*time.Second || got.MaxInterval != 60*time.Second {
 			t.Errorf("設定が正しく適用されていません: %+v", got)
+		}
+	})
+
+	t.Run("Option 列に変換できること", func(t *testing.T) {
+		opts := Config{MaxRetries: 5}.buildRetryOptions()
+		if len(opts) != 3 {
+			t.Errorf("Option の数が不正です: %d", len(opts))
 		}
 	})
 }
