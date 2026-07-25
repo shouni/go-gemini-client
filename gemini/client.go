@@ -28,9 +28,18 @@ type Client struct {
 	modelClient         modelClient
 	fileClient          fileClient
 	backend             genai.Backend
-	retryConfig         retry.Config
+	retryOpts           []retry.Option
 	filePollingInterval time.Duration
 	filePollingTimeout  time.Duration
+}
+
+// runWithRetry は共通のリトライ設定を適用して操作を実行します。
+// retry.RunValue を使うことで、呼び出し側がクロージャで結果を受け渡す必要がなくなります。
+func runWithRetry[T any](ctx context.Context, opts []retry.Option, name string, op func() (T, error)) (T, error) {
+	all := make([]retry.Option, 0, len(opts)+2)
+	all = append(all, opts...)
+	all = append(all, retry.WithName(name), retry.WithShouldRetry(shouldRetry))
+	return retry.RunValue(ctx, op, all...)
 }
 
 // NewClient は提供された設定に基づいて、新しい Gemini クライアントを作成します。
@@ -49,7 +58,7 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 		modelClient:         genAIModelClient{models: client.Models},
 		fileClient:          genAIFileClient{files: client.Files},
 		backend:             clientCfg.Backend,
-		retryConfig:         cfg.buildRetryConfig(),
+		retryOpts:           cfg.buildRetryOptions(),
 		filePollingInterval: cfg.getFilePollingInterval(),
 		filePollingTimeout:  cfg.getFilePollingTimeout(),
 	}, nil
@@ -153,28 +162,15 @@ func (c *Client) buildGenerateConfig(opts GenerateOptions) (*genai.GenerateConte
 
 // generate は共通の API 呼び出しとリトライロジックをカプセル化します。
 func (c *Client) generate(ctx context.Context, modelName string, contents []*genai.Content, config *genai.GenerateContentConfig) (*Response, error) {
-	var finalResp *Response
-
-	op := func() error {
-		resp, err := c.modelClient.GenerateContent(ctx, modelName, contents, config)
-		if err != nil {
-			return err
-		}
-
-		r, respErr := responseFromGenAI(resp, false)
-		if respErr != nil {
-			return respErr
-		}
-		finalResp = r
-		return nil
-	}
-
-	err := retry.Do(ctx, c.retryConfig, fmt.Sprintf("Gemini API 呼び出し（モデル: %s）", modelName), op, shouldRetry)
-	if err != nil {
-		return nil, err
-	}
-
-	return finalResp, nil
+	return runWithRetry(ctx, c.retryOpts,
+		fmt.Sprintf("Gemini API 呼び出し（モデル: %s）", modelName),
+		func() (*Response, error) {
+			resp, err := c.modelClient.GenerateContent(ctx, modelName, contents, config)
+			if err != nil {
+				return nil, err
+			}
+			return responseFromGenAI(resp, false)
+		})
 }
 
 // responseFromGenAI は genai のレスポンスをパッケージ公開型の Response に変換します。
@@ -277,19 +273,13 @@ func (c *Client) CountTokensWithParts(ctx context.Context, modelName string, par
 	}
 	contents := []*genai.Content{{Role: "user", Parts: parts}}
 
-	var total int32
-	op := func() error {
-		resp, err := c.modelClient.CountTokens(ctx, modelName, contents, &genai.CountTokensConfig{})
-		if err != nil {
-			return err
-		}
-		total = resp.TotalTokens
-		return nil
-	}
-
-	err := retry.Do(ctx, c.retryConfig, fmt.Sprintf("Gemini CountTokens 呼び出し（モデル: %s）", modelName), op, shouldRetry)
-	if err != nil {
-		return 0, err
-	}
-	return total, nil
+	return runWithRetry(ctx, c.retryOpts,
+		fmt.Sprintf("Gemini CountTokens 呼び出し（モデル: %s）", modelName),
+		func() (int32, error) {
+			resp, err := c.modelClient.CountTokens(ctx, modelName, contents, &genai.CountTokensConfig{})
+			if err != nil {
+				return 0, err
+			}
+			return resp.TotalTokens, nil
+		})
 }

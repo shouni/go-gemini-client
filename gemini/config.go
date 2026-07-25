@@ -89,20 +89,53 @@ func orDefault(v, def time.Duration) time.Duration {
 	return def
 }
 
-// buildRetryConfig は設定から retry.Config を構築します。
-func (c Config) buildRetryConfig() retry.Config {
-	rc := retry.DefaultConfig()
+// retryParams は Config から解決済みのリトライ設定値です。
+// retry.Option は不透明な関数値でテストから検査できないため、
+// 「どの値が採用されたか」を検証可能にする中間表現として保持しています。
+type retryParams struct {
+	MaxRetries      uint
+	InitialInterval time.Duration
+	MaxInterval     time.Duration
+}
 
-	if c.MaxRetries > 0 {
-		rc.MaxRetries = c.MaxRetries
-	} else {
-		rc.MaxRetries = DefaultMaxRetries
+// retryParams は未設定項目をデフォルトで補完したリトライ設定を返します。
+//
+// MaxRetries が 0 の場合は DefaultMaxRetries にフォールバックします
+// （netarmor の retry.WithMaxRetries は 0 を「リトライしない」と解釈するため、
+// この分岐がないと未設定時にリトライが行われなくなります）。
+func (c Config) retryParams() retryParams {
+	maxRetries := c.MaxRetries
+	if maxRetries == 0 {
+		maxRetries = DefaultMaxRetries
 	}
 
-	rc.InitialInterval = orDefault(c.InitialDelay, DefaultInitialDelay)
-	rc.MaxInterval = orDefault(c.MaxDelay, DefaultMaxDelay)
+	return retryParams{
+		MaxRetries:      clampToUint(maxRetries),
+		InitialInterval: orDefault(c.InitialDelay, DefaultInitialDelay),
+		MaxInterval:     orDefault(c.MaxDelay, DefaultMaxDelay),
+	}
+}
 
-	return rc
+// options は netarmor の retry.Option 列に変換します。
+func (p retryParams) options() []retry.Option {
+	return []retry.Option{
+		retry.WithMaxRetries(p.MaxRetries),
+		retry.WithInitialInterval(p.InitialInterval),
+		retry.WithMaxInterval(p.MaxInterval),
+	}
+}
+
+// buildRetryOptions は設定から netarmor の retry.Option 列を構築します。
+func (c Config) buildRetryOptions() []retry.Option {
+	return c.retryParams().options()
+}
+
+// clampToUint は uint64 -> uint の変換を飽和させます（32bit 環境での切り詰め防止）。
+func clampToUint(v uint64) uint {
+	if v > uint64(^uint(0)) {
+		return ^uint(0)
+	}
+	return uint(v)
 }
 
 func (c Config) getFilePollingInterval() time.Duration {

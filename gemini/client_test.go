@@ -334,7 +334,7 @@ func TestGenerateWithParts_AudioOnlyResponse(t *testing.T) {
 	}
 	c := &Client{
 		modelClient: fake,
-		retryConfig: Config{MaxRetries: 1}.buildRetryConfig(),
+		retryOpts:   Config{MaxRetries: 1}.buildRetryOptions(),
 	}
 
 	resp, err := c.GenerateWithParts(ctx, "gemini-test", []*genai.Part{{Text: "voice please"}}, GenerateOptions{
@@ -371,11 +371,11 @@ func TestGenerateWithParts_ExtractsImagesAndAudios(t *testing.T) {
 	}
 	c := &Client{
 		modelClient: fake,
-		retryConfig: Config{
+		retryOpts: Config{
 			MaxRetries:   1,
 			InitialDelay: time.Nanosecond,
 			MaxDelay:     time.Nanosecond,
-		}.buildRetryConfig(),
+		}.buildRetryOptions(),
 	}
 
 	resp, err := c.GenerateWithParts(ctx, "gemini-test", []*genai.Part{{Text: "hello"}}, GenerateOptions{})
@@ -397,11 +397,11 @@ func TestGenerateWithParts_RetriesOnRateLimit(t *testing.T) {
 	}
 	c := &Client{
 		modelClient: fake,
-		retryConfig: Config{
+		retryOpts: Config{
 			MaxRetries:   2,
 			InitialDelay: time.Nanosecond,
 			MaxDelay:     time.Nanosecond,
-		}.buildRetryConfig(),
+		}.buildRetryOptions(),
 	}
 
 	resp, err := c.GenerateWithParts(ctx, "gemini-test", []*genai.Part{{Text: "hello"}}, GenerateOptions{})
@@ -423,11 +423,11 @@ func TestGenerateWithParts_DoesNotRetryOnBadRequest(t *testing.T) {
 	}
 	c := &Client{
 		modelClient: fake,
-		retryConfig: Config{
+		retryOpts: Config{
 			MaxRetries:   2,
 			InitialDelay: time.Nanosecond,
 			MaxDelay:     time.Nanosecond,
-		}.buildRetryConfig(),
+		}.buildRetryOptions(),
 	}
 
 	_, err := c.GenerateWithParts(ctx, "gemini-test", []*genai.Part{{Text: "hello"}}, GenerateOptions{})
@@ -458,7 +458,7 @@ func TestGenerateWithParts_PopulatesUsage(t *testing.T) {
 	}
 	c := &Client{
 		modelClient: fake,
-		retryConfig: Config{MaxRetries: 1}.buildRetryConfig(),
+		retryOpts:   Config{MaxRetries: 1}.buildRetryOptions(),
 	}
 
 	resp, err := c.GenerateWithParts(ctx, "gemini-test", []*genai.Part{{Text: "hello"}}, GenerateOptions{})
@@ -492,7 +492,7 @@ func TestCountTokens_Success(t *testing.T) {
 	}
 	c := &Client{
 		modelClient: fake,
-		retryConfig: Config{MaxRetries: 1}.buildRetryConfig(),
+		retryOpts:   Config{MaxRetries: 1}.buildRetryOptions(),
 	}
 
 	got, err := c.CountTokens(ctx, "gemini-test", "こんにちは")
@@ -514,11 +514,11 @@ func TestCountTokens_DoesNotRetryOnBadRequest(t *testing.T) {
 	}
 	c := &Client{
 		modelClient: fake,
-		retryConfig: Config{
+		retryOpts: Config{
 			MaxRetries:   2,
 			InitialDelay: time.Nanosecond,
 			MaxDelay:     time.Nanosecond,
-		}.buildRetryConfig(),
+		}.buildRetryOptions(),
 	}
 
 	_, err := c.CountTokens(ctx, "gemini-test", "hello")
