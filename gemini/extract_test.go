@@ -235,3 +235,106 @@ func TestExtractText_UnsetFinishReason(t *testing.T) {
 		}
 	})
 }
+
+func TestBuildThinkingConfig(t *testing.T) {
+	tests := []struct {
+		name      string
+		opts      GenerateOptions
+		wantNil   bool
+		wantLevel genai.ThinkingLevel
+		wantBudge *int32
+	}{
+		{
+			name:    "未指定なら nil（モデル既定の思考挙動を上書きしない）",
+			opts:    GenerateOptions{},
+			wantNil: true,
+		},
+		{
+			name:      "ThinkingBudget のみ",
+			opts:      GenerateOptions{ThinkingBudget: Ptr[int32](0)},
+			wantBudge: Ptr[int32](0),
+		},
+		{
+			name:      "ThinkingLevel のみ",
+			opts:      GenerateOptions{ThinkingLevel: genai.ThinkingLevelLow},
+			wantLevel: genai.ThinkingLevelLow,
+		},
+		{
+			name:      "両方指定なら ThinkingLevel を優先し Budget は送らない",
+			opts:      GenerateOptions{ThinkingLevel: genai.ThinkingLevelHigh, ThinkingBudget: Ptr[int32](4096)},
+			wantLevel: genai.ThinkingLevelHigh,
+		},
+		{
+			name:      "Unspecified は未指定扱い",
+			opts:      GenerateOptions{ThinkingLevel: genai.ThinkingLevelUnspecified, ThinkingBudget: Ptr[int32](128)},
+			wantBudge: Ptr[int32](128),
+		},
+		{
+			name: "IncludeThoughts だけでも設定を送る",
+			opts: GenerateOptions{IncludeThoughts: true},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildThinkingConfig(tt.opts)
+
+			if tt.wantNil {
+				if got != nil {
+					t.Fatalf("nil を期待しましたが: %+v", got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatal("ThinkingConfig が nil です")
+			}
+			if got.ThinkingLevel != tt.wantLevel {
+				t.Errorf("ThinkingLevel = %q, want %q", got.ThinkingLevel, tt.wantLevel)
+			}
+			switch {
+			case tt.wantBudge == nil && got.ThinkingBudget != nil:
+				t.Errorf("ThinkingBudget = %v, want nil", *got.ThinkingBudget)
+			case tt.wantBudge != nil && got.ThinkingBudget == nil:
+				t.Errorf("ThinkingBudget = nil, want %v", *tt.wantBudge)
+			case tt.wantBudge != nil && *got.ThinkingBudget != *tt.wantBudge:
+				t.Errorf("ThinkingBudget = %v, want %v", *got.ThinkingBudget, *tt.wantBudge)
+			}
+			if got.IncludeThoughts != tt.opts.IncludeThoughts {
+				t.Errorf("IncludeThoughts = %v, want %v", got.IncludeThoughts, tt.opts.IncludeThoughts)
+			}
+		})
+	}
+}
+
+func TestBuildGenerateConfig_ResponseSchema(t *testing.T) {
+	c := &Client{}
+	schema := &genai.Schema{Type: genai.TypeObject}
+	jsonSchema := map[string]any{"type": "object"}
+
+	t.Run("ResponseSchema のみ", func(t *testing.T) {
+		cfg, err := c.buildGenerateConfig(GenerateOptions{ResponseSchema: schema})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.ResponseSchema == nil || cfg.ResponseJsonSchema != nil {
+			t.Errorf("ResponseSchema だけが送られるべきです: schema=%v json=%v",
+				cfg.ResponseSchema, cfg.ResponseJsonSchema)
+		}
+	})
+
+	t.Run("両方指定なら ResponseJSONSchema を優先すること", func(t *testing.T) {
+		cfg, err := c.buildGenerateConfig(GenerateOptions{
+			ResponseSchema:     schema,
+			ResponseJSONSchema: jsonSchema,
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.ResponseJsonSchema == nil {
+			t.Error("ResponseJsonSchema が送られていません")
+		}
+		if cfg.ResponseSchema != nil {
+			t.Error("両方送るとどちらが効くか不定になるため ResponseSchema は送らないべきです")
+		}
+	})
+}
