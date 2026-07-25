@@ -20,7 +20,7 @@ func TestShouldRetry(t *testing.T) {
 		want bool
 	}{
 		{"nilはリトライしない", nil, false},
-		{"APIResponseErrorはリトライしない", &APIResponseError{msg: "blocked"}, false},
+		{"APIResponseErrorはリトライしない", newBlockedError(genai.FinishReasonSafety), false},
 		{"コンテキストキャンセルはリトライしない", context.Canceled, false},
 		{"429 レート制限はリトライする", genai.APIError{Code: http.StatusTooManyRequests, Status: "RESOURCE_EXHAUSTED"}, true},
 		{"500 サーバーエラーはリトライする", genai.APIError{Code: http.StatusInternalServerError, Status: "INTERNAL"}, true},

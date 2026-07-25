@@ -2,6 +2,7 @@ package gemini
 
 import (
 	"errors"
+	"net/http"
 	"time"
 
 	"github.com/shouni/netarmor/retry"
@@ -29,6 +30,23 @@ type Config struct {
 	MaxDelay            time.Duration
 	FilePollingInterval time.Duration
 	FilePollingTimeout  time.Duration
+
+	// HTTPClient は genai SDK が使用する HTTP クライアントを差し替えます。
+	// nil の場合は SDK のデフォルトが使われます。
+	//
+	// タイムアウトやプロキシを制御したい場合、あるいは SSRF 対策済みの
+	// クライアントを使いたい場合に指定します。
+	//
+	//	cfg.HTTPClient = securenet.NewSafeHTTPClient(60 * time.Second)
+	HTTPClient *http.Client
+
+	// OnRetry はリトライ直前に呼び出されます。nil の場合は何もしません。
+	// 429 が続いた場合の可視化などに使用します。
+	//
+	//	cfg.OnRetry = func(err error, attempt uint, next time.Duration) {
+	//	    slog.Warn("gemini retry", "attempt", attempt, "next", next, "err", err)
+	//	}
+	OnRetry retry.NotifyFunc
 }
 
 // isVertexAI ProjectIDおよびLocationIDのセットを確認し、Vertex AIの設定が有効であるかをチェックします。
@@ -69,7 +87,7 @@ func (c Config) validate() error {
 
 // toClientConfig Config を genai.ClientConfig に変換します。
 func (c Config) toClientConfig() *genai.ClientConfig {
-	cc := &genai.ClientConfig{}
+	cc := &genai.ClientConfig{HTTPClient: c.HTTPClient}
 	if c.isVertexAI() {
 		cc.Project = c.ProjectID
 		cc.Location = c.LocationID
@@ -127,7 +145,11 @@ func (p retryParams) options() []retry.Option {
 
 // buildRetryOptions は設定から netarmor の retry.Option 列を構築します。
 func (c Config) buildRetryOptions() []retry.Option {
-	return c.retryParams().options()
+	opts := c.retryParams().options()
+	if c.OnRetry != nil {
+		opts = append(opts, retry.WithNotify(c.OnRetry))
+	}
+	return opts
 }
 
 // clampToUint は uint64 -> uint の変換を飽和させます（32bit 環境での切り詰め防止）。

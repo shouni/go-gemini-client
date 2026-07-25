@@ -10,10 +10,25 @@ import (
 	"google.golang.org/genai"
 )
 
+// UploadedFile はアップロード済みファイルの参照情報です。
+//
+// URI と Name はどちらも文字列ですが用途が異なります。URI は生成リクエストの
+// genai.FileData に渡す値、Name は DeleteFile に渡す識別子です。
+// 取り違えを防ぐため構造体で返しています。
+type UploadedFile struct {
+	// URI は生成リクエストから参照するための URI です。
+	URI string
+	// Name は File API 上の識別子です。DeleteFile に渡します。
+	Name string
+}
+
 // UploadFile はデータをアップロードし、そのファイルが Active 状態になるまで待機します。
 // アップロード処理自体が成功した場合、たとえその後の Active 化処理でエラーが発生しても
 // サーバー側にリソースが残る可能性があるため、バックグラウンドでの削除を試みます。
-func (c *Client) UploadFile(ctx context.Context, r io.Reader, mimeType, displayName string) (string, string, error) {
+//
+// バックグラウンド削除は投げっぱなしで、完了を待つ手段はありません。
+// 確実に削除したい場合は呼び出し側で DeleteFile を呼んでください。
+func (c *Client) UploadFile(ctx context.Context, r io.Reader, mimeType, displayName string) (UploadedFile, error) {
 	uploadCfg := &genai.UploadFileConfig{
 		MIMEType:    mimeType,
 		DisplayName: displayName,
@@ -21,7 +36,7 @@ func (c *Client) UploadFile(ctx context.Context, r io.Reader, mimeType, displayN
 
 	file, err := c.fileClient.Upload(ctx, r, uploadCfg)
 	if err != nil {
-		return "", "", fmt.Errorf("gemini File API へのアップロードに失敗しました: %w", err)
+		return UploadedFile{}, fmt.Errorf("gemini File API へのアップロードに失敗しました: %w", err)
 	}
 
 	// Active 状態になるのを待機
@@ -29,10 +44,10 @@ func (c *Client) UploadFile(ctx context.Context, r io.Reader, mimeType, displayN
 	if err != nil {
 		// アップロード自体は成功しているため、クリーンアップのためにファイル名を渡す
 		c.asyncDelete(file.Name)
-		return "", "", fmt.Errorf("ファイル %q が有効状態になるまでの待機中にエラーが発生しました: %w", file.Name, err)
+		return UploadedFile{}, fmt.Errorf("ファイル %q が有効状態になるまでの待機中にエラーが発生しました: %w", file.Name, err)
 	}
 
-	return uri, file.Name, nil
+	return UploadedFile{URI: uri, Name: file.Name}, nil
 }
 
 // DeleteFile は指定された名前のファイルを File API から削除します。

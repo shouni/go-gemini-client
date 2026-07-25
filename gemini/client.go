@@ -111,7 +111,21 @@ func validateGenerateInput(modelName string, parts []*genai.Part) error {
 
 func (c *Client) buildGenerateConfig(opts GenerateOptions) (*genai.GenerateContentConfig, error) {
 	genConfig := &genai.GenerateContentConfig{
-		SafetySettings: opts.SafetySettings,
+		SafetySettings:  opts.SafetySettings,
+		Temperature:     opts.Temperature,
+		TopP:            opts.TopP,
+		TopK:            opts.TopK,
+		MaxOutputTokens: opts.MaxOutputTokens,
+		StopSequences:   opts.StopSequences,
+	}
+
+	// 思考設定は、予算指定かサマリ要求のどちらかがある場合のみ送る。
+	// 常に送るとモデル既定の思考挙動を上書きしてしまう。
+	if opts.ThinkingBudget != nil || opts.IncludeThoughts {
+		genConfig.ThinkingConfig = &genai.ThinkingConfig{
+			IncludeThoughts: opts.IncludeThoughts,
+			ThinkingBudget:  opts.ThinkingBudget,
+		}
 	}
 
 	if opts.ResponseMIMEType != "" {
@@ -206,6 +220,7 @@ func responseFromGenAI(resp *genai.GenerateContentResponse, lenient bool) (*Resp
 		Text:        text,
 		Images:      images,
 		Audios:      audios,
+		Thoughts:    extractThoughts(resp),
 		Usage:       tokenUsageFromMetadata(resp.UsageMetadata),
 		RawResponse: resp,
 	}, nil

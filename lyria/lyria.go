@@ -8,6 +8,16 @@ import (
 	"golang.org/x/time/rate"
 )
 
+// Workflow がパッケージ公開インターフェースを満たすことをコンパイル時に保証します。
+// これらのアサーションがないと、メソッドシグネチャがドリフトしても
+// 下流の利用側がビルドされるまで気付けません。
+var (
+	_ MusicWorkflow  = (*Workflow)(nil)
+	_ Lyricist       = (*Workflow)(nil)
+	_ Composer       = (*Workflow)(nil)
+	_ AudioGenerator = (*Workflow)(nil)
+)
+
 // Workflow は、歌詞生成・作曲・音声生成を束ねるファサードです。
 type Workflow struct {
 	lyricist Lyricist
@@ -47,6 +57,7 @@ func New(aiClient gemini.Generator, promptGen TextPromptGenerator, audioPromptBu
 		promptGen:    promptGen,
 		defaultModel: opts.geminiModel,
 		limiter:      textLimiter,
+		execTimeout:  opts.execTimeout,
 	}
 
 	return &Workflow{
@@ -57,6 +68,7 @@ func New(aiClient gemini.Generator, promptGen TextPromptGenerator, audioPromptBu
 			promptBuilder:     audioPromptBuilder,
 			converter:         converter,
 			limiter:           limiter,
+			execTimeout:       opts.execTimeout,
 			defaultLyriaModel: opts.lyriaModel,
 		},
 	}, nil

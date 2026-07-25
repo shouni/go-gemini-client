@@ -8,6 +8,7 @@ type options struct {
 	rateInterval     time.Duration
 	textRateInterval time.Duration
 	readingConverter ReadingConverter
+	execTimeout      time.Duration
 }
 
 // Option configures Adapter.
@@ -46,6 +47,15 @@ func WithRateInterval(value time.Duration) Option {
 func WithTextRateInterval(value time.Duration) Option {
 	return func(opts *options) {
 		opts.textRateInterval = value
+	}
+}
+
+// WithExecTimeout sets the per-execution timeout applied to singleflight-shared
+// generation calls. The execution context is detached from the caller, so this is
+// the only thing that bounds a shared run. Zero (unset) means 5 minutes.
+func WithExecTimeout(value time.Duration) Option {
+	return func(opts *options) {
+		opts.execTimeout = value
 	}
 }
 

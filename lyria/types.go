@@ -1,12 +1,16 @@
 package lyria
 
 // AIModels selects the text and audio models used by Lyria generation.
+//
+// MusicRecipe に埋め込まれるため、JSON タグは MusicRecipe の他のフィールドと
+// 同じ snake_case に揃えています。タグを省くと Go のフィールド名がそのまま
+// レシピ JSON に出力されてしまいます。
 type AIModels struct {
-	TextModel   string
-	AudioModel  string
-	LyricsMode  string
-	ComposeMode string
-	Seed        *int64
+	TextModel   string `json:"text_model,omitempty"`
+	AudioModel  string `json:"audio_model,omitempty"`
+	LyricsMode  string `json:"lyrics_mode,omitempty"`
+	ComposeMode string `json:"compose_mode,omitempty"`
+	Seed        *int64 `json:"seed,omitempty"`
 	// Lang は歌詞・ボーカルの言語コードです（"ja" / "en"）。空は "ja" 扱いです。
 	Lang string `json:"lang,omitempty"`
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/shouni/go-gemini-client/gemini"
 	"golang.org/x/sync/singleflight"
@@ -19,7 +20,8 @@ type lyriaTextGenerator struct {
 	aiClient     gemini.Generator
 	promptGen    TextPromptGenerator
 	defaultModel string
-	limiter      *rate.Limiter // nil の場合はレート制限しない（構造体リテラルでの直接構築との後方互換のため）
+	limiter      *rate.Limiter // nil はレート制限なし（テストが構造体リテラルで直接構築するため）
+	execTimeout  time.Duration
 	group        singleflight.Group
 }
 
@@ -35,8 +37,10 @@ func (g *lyriaTextGenerator) resolveModel(override string) string {
 // フローを実行します。kind はエラーメッセージと singleflight キーの識別子です。
 // 戻り値は singleflight で共有されるため、呼び出し側で複製してから返してください。
 func generateJSON[T any](ctx context.Context, g *lyriaTextGenerator, kind, model, prompt string, seed *int64, schema *genai.Schema) (*T, error) {
-	key := singleflightKey(kind, model, prompt)
-	return doSingleflight(ctx, &g.group, key, func(execCtx context.Context) (*T, error) {
+	// seed は生成結果を変えるため、必ずキーに含める。含め忘れると同一プロンプトで
+	// seed 違いの同時呼び出しが 1 回の生成結果を共有してしまう。
+	key := singleflightKey(kind, model, prompt, singleflightSeedKey(seed))
+	return doSingleflight(ctx, &g.group, key, g.execTimeout, func(execCtx context.Context) (*T, error) {
 		if g.limiter != nil {
 			if err := g.limiter.Wait(execCtx); err != nil {
 				return nil, err
