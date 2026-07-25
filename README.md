@@ -276,7 +276,8 @@ recipe, wavBytes, err := workflow.Run(ctx, lyria.AIModels{}, &lyria.CollectedCon
 | `TopP` / `TopK` | サンプリング範囲の制御（`*float32`）。nil で SDK デフォルト。 |
 | `MaxOutputTokens` | 生成する最大トークン数。0 で SDK デフォルト。 |
 | `StopSequences` | 生成を打ち切る文字列のリスト。 |
-| `ThinkingBudget` | 思考トークンの上限（`*int32`）。`Ptr[int32](0)` で思考を無効化しコストとレイテンシを抑えます。nil でモデル既定。 |
+| `ThinkingBudget` | 思考トークンの上限（`*int32`）。`Ptr[int32](0)` で思考を無効化しコストとレイテンシを抑えます。nil でモデル既定。有効範囲はモデル依存です。 |
+| `ThinkingLevel` | 思考量の段階指定（`MINIMAL` / `LOW` / `MEDIUM` / `HIGH`）。モデル非依存で移植性が高い方の指定方法です。`ThinkingBudget` と併用した場合はこちらが優先されます。 |
 | `IncludeThoughts` | true にすると思考サマリが `Response.Thoughts` に入ります（`Text` には含まれません）。 |
 | `AspectRatio` | 画像生成時のアスペクト比を指定します。 |
 | `ImageSize` | 画像生成時のサイズを指定します。 |
@@ -285,6 +286,7 @@ recipe, wavBytes, err := workflow.Run(ctx, lyria.AIModels{}, &lyria.CollectedCon
 | `SafetySettings` | SDK の SafetySettings を指定します。 |
 | `ResponseMIMEType` | `image/png` や `audio/wav` など、期待するレスポンス MIME type を指定します。 |
 | `ResponseSchema` | 構造化出力（constrained decoding）のスキーマ。`application/json` と併用すると、出力が文法レベルでスキーマに制約されます。 |
+| `ResponseJSONSchema` | 標準的な JSON Schema による構造化出力。`$ref` を含む複雑なスキーマで `ResponseSchema` がうまく機能しない場合の代替です。併用した場合はこちらが優先されます。 |
 
 標準的な4つのハームカテゴリ（暴力・ヘイト・性的表現・危険行為）すべてに同一の閾値を適用したい場合は、`gemini.NewSafetySettings(threshold)` ヘルパーを使うと `SafetySettings` を簡潔に構築できます。閾値をバックエンドや用途に応じてどう選ぶかは呼び出し側の判断に委ねています。
 

@@ -64,7 +64,16 @@ type GenerateOptions struct {
 	// ThinkingBudget は思考に使うトークン数の上限です。
 	// 0 を明示すると思考を無効化し、レイテンシとコストを抑えられます。
 	// nil ではモデルのデフォルトに委ねます。
+	//
+	// 有効なトークン数の範囲はモデルごとに異なります。モデルを跨いで使う場合は
+	// ThinkingLevel のほうが移植性があります。
 	ThinkingBudget *int32
+	// ThinkingLevel は思考量を段階で指定します（MINIMAL / LOW / MEDIUM / HIGH）。
+	// ThinkingBudget のトークン数指定に対し、モデル非依存で扱えるのが利点です。
+	//
+	// ThinkingBudget と ThinkingLevel は排他的な指定方法です。
+	// 両方を設定した場合は ThinkingLevel を優先し、ThinkingBudget は送信しません。
+	ThinkingLevel genai.ThinkingLevel
 	// IncludeThoughts を true にすると思考サマリが返され、Response.Thoughts で取得できます。
 	IncludeThoughts bool
 
@@ -81,6 +90,13 @@ type GenerateOptions struct {
 	// 併用すると、モデル出力が文法レベルでスキーマに制約され、JSON 以外の
 	// 余計なテキストが混入しなくなります。
 	ResponseSchema *genai.Schema
+	// ResponseJSONSchema は、標準的な JSON Schema による構造化出力の指定です。
+	// $ref を含むような複雑なスキーマで ResponseSchema がうまく機能しない場合の
+	// 代替として使用します。
+	//
+	// ResponseSchema と ResponseJSONSchema は排他的な指定方法です。
+	// 両方を設定した場合は ResponseJSONSchema を優先し、ResponseSchema は送信しません。
+	ResponseJSONSchema any
 }
 
 // Ptr は任意の値へのポインタを返すヘルパーです。

@@ -109,6 +109,26 @@ func validateGenerateInput(modelName string, parts []*genai.Part) error {
 	return nil
 }
 
+// buildThinkingConfig は思考設定を組み立てます。
+// 何も指定がなければ nil を返します。常に送るとモデル既定の思考挙動を上書きしてしまうためです。
+//
+// ThinkingLevel（段階指定）と ThinkingBudget（トークン数指定）は排他的な指定方法です。
+// 両方が設定された場合は、モデル非依存で移植性の高い ThinkingLevel を優先します。
+func buildThinkingConfig(opts GenerateOptions) *genai.ThinkingConfig {
+	hasLevel := opts.ThinkingLevel != "" && opts.ThinkingLevel != genai.ThinkingLevelUnspecified
+	if !hasLevel && opts.ThinkingBudget == nil && !opts.IncludeThoughts {
+		return nil
+	}
+
+	cfg := &genai.ThinkingConfig{IncludeThoughts: opts.IncludeThoughts}
+	if hasLevel {
+		cfg.ThinkingLevel = opts.ThinkingLevel
+		return cfg
+	}
+	cfg.ThinkingBudget = opts.ThinkingBudget
+	return cfg
+}
+
 func (c *Client) buildGenerateConfig(opts GenerateOptions) (*genai.GenerateContentConfig, error) {
 	genConfig := &genai.GenerateContentConfig{
 		SafetySettings:  opts.SafetySettings,
@@ -119,14 +139,7 @@ func (c *Client) buildGenerateConfig(opts GenerateOptions) (*genai.GenerateConte
 		StopSequences:   opts.StopSequences,
 	}
 
-	// 思考設定は、予算指定かサマリ要求のどちらかがある場合のみ送る。
-	// 常に送るとモデル既定の思考挙動を上書きしてしまう。
-	if opts.ThinkingBudget != nil || opts.IncludeThoughts {
-		genConfig.ThinkingConfig = &genai.ThinkingConfig{
-			IncludeThoughts: opts.IncludeThoughts,
-			ThinkingBudget:  opts.ThinkingBudget,
-		}
-	}
+	genConfig.ThinkingConfig = buildThinkingConfig(opts)
 
 	if opts.ResponseMIMEType != "" {
 		genConfig.ResponseMIMEType = opts.ResponseMIMEType
@@ -137,7 +150,12 @@ func (c *Client) buildGenerateConfig(opts GenerateOptions) (*genai.GenerateConte
 			genConfig.ResponseModalities = []string{"IMAGE"}
 		}
 	}
-	if opts.ResponseSchema != nil {
+	// ResponseJSONSchema と ResponseSchema は排他。両方送るとどちらが効くか不定になるため、
+	// 新しい ResponseJSONSchema を優先して片方だけ送る。
+	switch {
+	case opts.ResponseJSONSchema != nil:
+		genConfig.ResponseJsonSchema = opts.ResponseJSONSchema
+	case opts.ResponseSchema != nil:
 		genConfig.ResponseSchema = opts.ResponseSchema
 	}
 	if opts.Seed != nil {
