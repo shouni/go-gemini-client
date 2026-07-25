@@ -154,15 +154,15 @@ func TestUploadFile_Success(t *testing.T) {
 		filePollingTimeout:  time.Hour,
 	}
 
-	uri, name, err := client.UploadFile(ctx, strings.NewReader("data"), "text/plain", "display")
+	got, err := client.UploadFile(ctx, strings.NewReader("data"), "text/plain", "display")
 	if err != nil {
 		t.Fatalf("UploadFile() unexpected error = %v", err)
 	}
-	if uri != "https://example.com/uploaded" {
-		t.Fatalf("uri = %q, want https://example.com/uploaded", uri)
+	if got.URI != "https://example.com/uploaded" {
+		t.Fatalf("URI = %q, want https://example.com/uploaded", got.URI)
 	}
-	if name != "files/uploaded" {
-		t.Fatalf("name = %q, want files/uploaded", name)
+	if got.Name != "files/uploaded" {
+		t.Fatalf("Name = %q, want files/uploaded", got.Name)
 	}
 	if fake.deleteCalls != 0 {
 		t.Fatalf("delete calls = %d, want 0 (成功時はクリーンアップしない)", fake.deleteCalls)
@@ -180,7 +180,7 @@ func TestUploadFile_UploadError(t *testing.T) {
 		filePollingTimeout:  time.Hour,
 	}
 
-	_, _, err := client.UploadFile(ctx, strings.NewReader("data"), "text/plain", "display")
+	_, err := client.UploadFile(ctx, strings.NewReader("data"), "text/plain", "display")
 	if err == nil {
 		t.Fatal("アップロード失敗時にエラーが返されませんでした")
 	}
@@ -205,7 +205,7 @@ func TestUploadFile_WaitFailsTriggersCleanup(t *testing.T) {
 		filePollingTimeout:  time.Hour,
 	}
 
-	_, _, err := client.UploadFile(ctx, strings.NewReader("data"), "text/plain", "display")
+	_, err := client.UploadFile(ctx, strings.NewReader("data"), "text/plain", "display")
 	if err == nil {
 		t.Fatal("Active 化失敗時にエラーが返されませんでした")
 	}

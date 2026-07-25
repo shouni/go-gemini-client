@@ -8,17 +8,10 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"strings"
 
 	"google.golang.org/genai"
 )
-
-// APIResponseError は、コンテンツのブロックや空のレスポンスなど、
-// APIとの通信成功後に発生した論理的なエラーを示します。
-type APIResponseError struct {
-	msg string
-}
-
-func (e *APIResponseError) Error() string { return e.msg }
 
 // shouldRetry は、発生したエラーがリトライによって解決可能かどうかを判定します。
 func shouldRetry(err error) bool {
@@ -69,14 +62,15 @@ func extractText(resp *genai.GenerateContentResponse, lenient bool) (string, err
 		if lenient {
 			return "", nil
 		}
-		return "", &APIResponseError{msg: "Gemini APIから空のレスポンスが返されました"}
+		return "", newEmptyResponseError()
 	}
 
 	candidate := resp.Candidates[0]
 
-	// FinishReason が正常（指定なし または STOP）以外の場合は、ブロックされたとみなします。
-	if candidate.FinishReason != genai.FinishReasonUnspecified && candidate.FinishReason != genai.FinishReasonStop {
-		return "", &APIResponseError{msg: fmt.Sprintf("生成がブロックされました（理由: %v）", candidate.FinishReason)}
+	// FinishReason が正常（未設定 または STOP）以外の場合は、ブロックされたとみなします。
+	// 未設定の判定は isUnsetFinishReason に集約しています（ゼロ値と SDK 定数が別値のため）。
+	if isBlockedFinishReason(candidate.FinishReason) {
+		return "", newBlockedError(candidate.FinishReason)
 	}
 
 	// コンテンツが存在しない場合。
@@ -84,14 +78,42 @@ func extractText(resp *genai.GenerateContentResponse, lenient bool) (string, err
 		return "", nil
 	}
 
-	// 最初に見つかったテキストパーツを返します。
+	// すべてのテキストパートを連結して返します。
+	//
+	// 思考機能 (ThinkingBudget) が有効なモデルは、思考サマリを Thought=true の
+	// テキストパートとして本文より前に返します。最初の非空テキストを返す実装では
+	// 本文ではなく思考サマリを返してしまうため、Thought パートは除外します。
+	// また、モデルは本文を複数パートに分割して返すことがあるため連結が必要です。
+	var sb strings.Builder
 	for _, part := range candidate.Content.Parts {
-		if part.Text != "" {
-			return part.Text, nil
+		if part == nil || part.Thought || part.Text == "" {
+			continue
 		}
+		sb.WriteString(part.Text)
 	}
 
-	return "", nil
+	return sb.String(), nil
+}
+
+// extractThoughts は思考サマリ（Thought=true のテキストパート）を連結して返します。
+// 思考機能が無効な場合や思考サマリが返されない場合は空文字列になります。
+func extractThoughts(resp *genai.GenerateContentResponse) string {
+	if resp == nil || len(resp.Candidates) == 0 {
+		return ""
+	}
+	candidate := resp.Candidates[0]
+	if candidate.Content == nil {
+		return ""
+	}
+
+	var sb strings.Builder
+	for _, part := range candidate.Content.Parts {
+		if part == nil || !part.Thought || part.Text == "" {
+			continue
+		}
+		sb.WriteString(part.Text)
+	}
+	return sb.String()
 }
 
 // tokenUsageFromMetadata は genai のトークン使用量メタデータを公開型に変換します。
@@ -103,6 +125,7 @@ func tokenUsageFromMetadata(meta *genai.GenerateContentResponseUsageMetadata) *T
 		PromptTokenCount:     meta.PromptTokenCount,
 		CandidatesTokenCount: meta.CandidatesTokenCount,
 		TotalTokenCount:      meta.TotalTokenCount,
+		ThoughtsTokenCount:   meta.ThoughtsTokenCount,
 	}
 }
 

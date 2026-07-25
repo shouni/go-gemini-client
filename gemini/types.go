@@ -1,7 +1,6 @@
 package gemini
 
 import (
-	"errors"
 	"time"
 
 	"google.golang.org/genai"
@@ -23,19 +22,6 @@ const (
 	AsyncCleanupTimeout = 15 * time.Second
 )
 
-var (
-	// ErrEmptyPrompt は、プロンプトが空の場合に返されます。
-	ErrEmptyPrompt = errors.New("プロンプトを空にすることはできません")
-	// ErrEmptyModelName は、モデル名が空の場合に返されます。
-	ErrEmptyModelName = errors.New("モデル名を空にすることはできません")
-	// ErrEmptyParts は、生成パーツが空の場合に返されます。
-	ErrEmptyParts = errors.New("生成パーツを空にすることはできません")
-	// ErrInvalidPart は、生成パーツに nil が含まれる場合に返されます。
-	ErrInvalidPart = errors.New("生成パーツに nil を含めることはできません")
-	// ErrInvalidSeed は、Seed が int32 の範囲外の場合に返されます。
-	ErrInvalidSeed = errors.New("seed は int32 の範囲内である必要があります")
-)
-
 // PersonGeneration は人物生成の許可設定を表すカスタム型です。
 type PersonGeneration string
 
@@ -51,13 +37,44 @@ const (
 )
 
 // GenerateOptions は各生成リクエストごとのオプションです。
+//
+// ポインタ型のフィールドは「未設定」と「明示的なゼロ値」を区別するためのものです。
+// 例えば Temperature は 0（決定的な出力）が意味を持つ値なので、nil のときだけ
+// SDK のデフォルトに委ねます。設定には Ptr ヘルパーが使えます。
+//
+//	opts := gemini.GenerateOptions{Temperature: gemini.Ptr[float32](0)}
 type GenerateOptions struct {
 	SystemPrompt string
-	// 画像生成 (Nano Banana / Imagen) 特有のパラメータ
+
+	// --- サンプリングパラメータ ---
+
+	// Temperature は出力のランダム性です（0 で最も決定的）。nil で SDK デフォルト。
+	Temperature *float32
+	// TopP は核サンプリングの閾値です。nil で SDK デフォルト。
+	TopP *float32
+	// TopK は上位 K 個からのサンプリング数です。nil で SDK デフォルト。
+	TopK *float32
+	// MaxOutputTokens は生成する最大トークン数です。0 で SDK デフォルト。
+	MaxOutputTokens int32
+	// StopSequences は生成を打ち切る文字列のリストです。
+	StopSequences []string
+
+	// --- 思考 (Gemini 2.5 以降) ---
+
+	// ThinkingBudget は思考に使うトークン数の上限です。
+	// 0 を明示すると思考を無効化し、レイテンシとコストを抑えられます。
+	// nil ではモデルのデフォルトに委ねます。
+	ThinkingBudget *int32
+	// IncludeThoughts を true にすると思考サマリが返され、Response.Thoughts で取得できます。
+	IncludeThoughts bool
+
+	// --- 画像生成 (Nano Banana / Imagen) 特有のパラメータ ---
+
 	AspectRatio      string
 	ImageSize        string
 	Seed             *int64
 	PersonGeneration PersonGeneration
+
 	SafetySettings   []*genai.SafetySetting
 	ResponseMIMEType string
 	// ResponseSchema は構造化出力のスキーマです。ResponseMIMEType "application/json" と
@@ -66,11 +83,19 @@ type GenerateOptions struct {
 	ResponseSchema *genai.Schema
 }
 
+// Ptr は任意の値へのポインタを返すヘルパーです。
+// GenerateOptions のポインタ型フィールドにリテラルを設定する際に使用します。
+func Ptr[T any](v T) *T { return &v }
+
 // Response は生成結果のラッパーです。
 type Response struct {
-	Text        string
-	Images      [][]byte // 生成画像 (InlineData) を保持します
-	Audios      [][]byte // Lyria 3 等の音声データ
+	Text   string
+	Images [][]byte // 生成画像 (InlineData) を保持します
+	Audios [][]byte // Lyria 3 等の音声データ
+	// Thoughts は思考サマリです。GenerateOptions.IncludeThoughts が true で、
+	// かつモデルが思考サマリを返した場合にのみ設定されます。
+	// Text には含まれません。
+	Thoughts    string
 	Usage       *TokenUsage
 	RawResponse *genai.GenerateContentResponse
 }
@@ -80,6 +105,9 @@ type TokenUsage struct {
 	PromptTokenCount     int32
 	CandidatesTokenCount int32
 	TotalTokenCount      int32
+	// ThoughtsTokenCount は思考に消費されたトークン数です。
+	// 課金対象になるため、思考機能を使う場合はこの値を監視してください。
+	ThoughtsTokenCount int32
 }
 
 // HasImageConfig は、画像生成特有のパラメータが1つでも設定されているかを判定します。

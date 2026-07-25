@@ -11,7 +11,7 @@ import (
 // 余分な閉じ括弧や説明テキストを継ぎ足すケースが実際に確認されているため、
 // json.Unmarshal の前段でこの関数を通すことを推奨します。
 func CleanJSONResponse(input string) string {
-	start := strings.Index(input, "{")
+	start, closer := firstJSONStart(input)
 	if start == -1 {
 		return input
 	}
@@ -25,11 +25,28 @@ func CleanJSONResponse(input string) string {
 	}
 
 	// LLM が '}' の代わりに ')' などで閉じてしまうケースを補正する。
-	trimmed := strings.TrimRight(input[start:], " \t\n\r),;")
-	repaired := trimmed + "}"
+	trimmed := strings.TrimRight(input[start:], " \t\n\r)]},;")
+	repaired := trimmed + closer
 	if json.Valid([]byte(repaired)) {
 		return repaired
 	}
 
 	return input
+}
+
+// firstJSONStart は最初に現れる JSON 値の開始位置と、対応する閉じ括弧を返します。
+// トップレベルが配列のスキーマ（例: 章立てのリスト）にも対応するため、
+// '{' と '[' の早い方を採用します。
+func firstJSONStart(input string) (start int, closer string) {
+	obj := strings.Index(input, "{")
+	arr := strings.Index(input, "[")
+
+	switch {
+	case obj == -1 && arr == -1:
+		return -1, ""
+	case arr == -1 || (obj != -1 && obj < arr):
+		return obj, "}"
+	default:
+		return arr, "]"
+	}
 }

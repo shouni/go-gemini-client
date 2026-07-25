@@ -167,16 +167,16 @@ if err != nil {
 }
 defer f.Close()
 
-uri, name, err := client.UploadFile(ctx, f, "video/mp4", "movie.mp4")
+uploaded, err := client.UploadFile(ctx, f, "video/mp4", "movie.mp4")
 if err != nil {
 	return err
 }
-defer client.DeleteFile(context.Background(), name)
+defer client.DeleteFile(context.Background(), uploaded.Name)
 
 resp, err := client.GenerateWithParts(ctx, "gemini-2.5-flash", []*genai.Part{
 	{
 		FileData: &genai.FileData{
-			URI:      uri,
+			URI:      uploaded.URI,
 			MIMEType: "video/mp4",
 		},
 	},
@@ -266,9 +266,18 @@ recipe, wavBytes, err := workflow.Run(ctx, lyria.AIModels{}, &lyria.CollectedCon
 
 ## 🧪 生成オプション (`gemini.GenerateOptions`)
 
+ゼロ値が意味を持つ項目（`Temperature: 0` = 最も決定的、`ThinkingBudget: 0` = 思考無効）は、
+「未設定」と区別するためポインタ型です。設定には `gemini.Ptr` ヘルパーを使います。
+
 | 設定項目 | 役割 |
 | --- | --- |
 | `SystemPrompt` | System instruction を指定します。 |
+| `Temperature` | 出力のランダム性（`*float32`）。`Ptr[float32](0)` で最も決定的。nil で SDK デフォルト。 |
+| `TopP` / `TopK` | サンプリング範囲の制御（`*float32`）。nil で SDK デフォルト。 |
+| `MaxOutputTokens` | 生成する最大トークン数。0 で SDK デフォルト。 |
+| `StopSequences` | 生成を打ち切る文字列のリスト。 |
+| `ThinkingBudget` | 思考トークンの上限（`*int32`）。`Ptr[int32](0)` で思考を無効化しコストとレイテンシを抑えます。nil でモデル既定。 |
+| `IncludeThoughts` | true にすると思考サマリが `Response.Thoughts` に入ります（`Text` には含まれません）。 |
 | `AspectRatio` | 画像生成時のアスペクト比を指定します。 |
 | `ImageSize` | 画像生成時のサイズを指定します。 |
 | `Seed` | 再現性のためのシード値。`int32` の範囲内である必要があります。 |
@@ -285,7 +294,26 @@ opts := gemini.GenerateOptions{
 }
 ```
 
-`ResponseSchema` + `ResponseMIMEType: "application/json"` による構造化出力（constrained decoding）を使っても、モデルが完結した JSON の後に余分な閉じ括弧や説明テキストを継ぎ足すことが実際にあります。`json.Unmarshal` の前段で `gemini.CleanJSONResponse(raw)` を通すと、こうした末尾ノイズを除去・補正できます。
+### エラーの分類
+
+生成失敗の理由は `errors.Is` / `errors.AsType` で判別できます。ブロックはリトライしても解決しないため、プロンプトの見直しが必要です。
+
+```go
+resp, err := client.GenerateContent(ctx, model, prompt)
+switch {
+case errors.Is(err, gemini.ErrBlocked):
+    // 安全フィルタ等でブロックされた。詳細な理由は FinishReason を参照
+    if apiErr, ok := errors.AsType[*gemini.APIResponseError](err); ok {
+        slog.Warn("blocked", "reason", apiErr.FinishReason)
+    }
+case errors.Is(err, gemini.ErrEmptyResponse):
+    // 候補が 1 件も返らなかった
+}
+```
+
+### 構造化出力の後処理
+
+`ResponseSchema` + `ResponseMIMEType: "application/json"` による構造化出力（constrained decoding）を使っても、モデルが完結した JSON の後に余分な閉じ括弧や説明テキストを継ぎ足すことが実際にあります。`json.Unmarshal` の前段で `gemini.CleanJSONResponse(raw)` を通すと、こうした末尾ノイズを除去・補正できます。トップレベルが配列（`[...]`）のスキーマにも対応しています。
 
 ```go
 resp, err := client.GenerateWithParts(ctx, model, parts, opts)

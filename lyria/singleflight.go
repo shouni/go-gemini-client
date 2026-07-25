@@ -12,9 +12,10 @@ import (
 	"golang.org/x/sync/singleflight"
 )
 
-// singleflightExecTimeout は、singleflight で共有される生成処理1回あたりの実行タイムアウトです。
-// 呼び出し元の context から切り離した実行用 context に適用されます。
-const singleflightExecTimeout = 5 * time.Minute
+// defaultSingleflightExecTimeout は、singleflight で共有される生成処理1回あたりの
+// 実行タイムアウトの既定値です。呼び出し元の context から切り離した実行用 context に
+// 適用されます。WithExecTimeout で変更できます。
+const defaultSingleflightExecTimeout = 5 * time.Minute
 
 // singleflightKey は namespace と可変長の部品から衝突しにくい singleflight 用キーを作ります。
 func singleflightKey(namespace string, parts ...string) string {
@@ -62,11 +63,13 @@ func calculateImagesHash(images []ImagePayload) string {
 // 実行用 context は共有実行のクロージャ内で呼び出し元から切り離して（WithoutCancel）
 // 生成します。呼び出し元側で生成すると、リーダー（最初の呼び出し元）がキャンセルして
 // 早期リターンした際に defer cancel() が共有実行を打ち切り、相乗りしている他の
-// 呼び出し元が巻き添えになるためです。実行の打ち切りは singleflightExecTimeout でのみ
-// 行われます。
-func doSingleflight[T any](ctx context.Context, group *singleflight.Group, key string, fn func(execCtx context.Context) (T, error)) (T, error) {
+// 呼び出し元が巻き添えになるためです。実行の打ち切りは execTimeout でのみ行われます。
+func doSingleflight[T any](ctx context.Context, group *singleflight.Group, key string, execTimeout time.Duration, fn func(execCtx context.Context) (T, error)) (T, error) {
+	if execTimeout <= 0 {
+		execTimeout = defaultSingleflightExecTimeout
+	}
 	ch := group.DoChan(key, func() (any, error) {
-		execCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), singleflightExecTimeout)
+		execCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), execTimeout)
 		defer cancel()
 		return fn(execCtx)
 	})

@@ -161,7 +161,7 @@ func TestDoSingleflightCallerCancelDoesNotKillSharedExecution(t *testing.T) {
 	ctxA, cancelA := context.WithCancel(context.Background())
 	errA := make(chan error, 1)
 	go func() {
-		_, err := doSingleflight(ctxA, &group, "same-key", fn)
+		_, err := doSingleflight(ctxA, &group, "same-key", 0, fn)
 		errA <- err
 	}()
 	<-started
@@ -173,7 +173,7 @@ func TestDoSingleflightCallerCancelDoesNotKillSharedExecution(t *testing.T) {
 	}
 	resB := make(chan result, 1)
 	go func() {
-		v, err := doSingleflight(context.Background(), &group, "same-key", fn)
+		v, err := doSingleflight(context.Background(), &group, "same-key", 0, fn)
 		resB <- result{v, err}
 	}()
 
@@ -345,5 +345,29 @@ func TestLyriaAudioGeneratorSingleflightSeparatesDifferentImages(t *testing.T) {
 
 	for _, err := range errs {
 		require.NoError(t, err)
+	}
+}
+
+// TestSingleflightKeyIncludesSeed は、seed がキーに含まれることを検証します。
+// 含まれないと、同一プロンプトで seed 違いの同時呼び出しが 1 回の生成結果を
+// 共有してしまい、seed による出力の作り分けが効かなくなります。
+func TestSingleflightKeyIncludesSeed(t *testing.T) {
+	seedA := int64(1)
+	seedB := int64(2)
+
+	keyNil := singleflightKey("lyrics", "model", "prompt", singleflightSeedKey(nil))
+	keyA := singleflightKey("lyrics", "model", "prompt", singleflightSeedKey(&seedA))
+	keyB := singleflightKey("lyrics", "model", "prompt", singleflightSeedKey(&seedB))
+
+	if keyA == keyB {
+		t.Error("seed 違いで同じキーになっています")
+	}
+	if keyA == keyNil || keyB == keyNil {
+		t.Error("seed 指定ありと nil で同じキーになっています")
+	}
+
+	// 同一入力では安定していること（キャッシュが効かなくなるため）
+	if keyA != singleflightKey("lyrics", "model", "prompt", singleflightSeedKey(&seedA)) {
+		t.Error("同一入力でキーが安定していません")
 	}
 }

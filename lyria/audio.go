@@ -5,6 +5,7 @@ package lyria
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/shouni/go-gemini-client/gemini"
 	"golang.org/x/sync/singleflight"
@@ -18,7 +19,8 @@ type lyriaAudioGenerator struct {
 	promptBuilder     AudioPromptBuilder
 	converter         ReadingConverter
 	defaultLyriaModel string
-	limiter           *rate.Limiter
+	limiter           *rate.Limiter // nil はレート制限なし（テストが構造体リテラルで直接構築するため）
+	execTimeout       time.Duration
 	group             singleflight.Group
 }
 
@@ -40,8 +42,7 @@ func (g *lyriaAudioGenerator) GenerateAudio(ctx context.Context, recipe *MusicRe
 	parts := g.buildMultiModalParts(promptText, images)
 	imageHash := calculateImagesHash(images)
 	key := singleflightKey("audio-full", targetModel, promptText, singleflightSeedKey(recipe.Seed), imageHash)
-	audio, err := doSingleflight(ctx, &g.group, key, func(execCtx context.Context) ([]byte, error) {
-		// limiter が nil の場合はレート制限しない（構造体リテラルでの直接構築との後方互換のため）。
+	audio, err := doSingleflight(ctx, &g.group, key, g.execTimeout, func(execCtx context.Context) ([]byte, error) {
 		if g.limiter != nil {
 			if err := g.limiter.Wait(execCtx); err != nil {
 				return nil, err
