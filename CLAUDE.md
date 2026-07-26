@@ -6,8 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Go library wrapping the official `google.golang.org/genai` SDK for Gemini API / Vertex AI, plus a music-generation workflow built on top of it. Two packages, no main:
 
-- `gemini/` — retrying client (text/multimodal generation, File API upload with Active-state polling, response extraction into `Response{Text, Images, Audios}`)
-- `lyria/` — lyrics → recipe → audio music-generation workflow facade using `gemini.Generator`
+- `gemini/` — retrying client (text/multimodal generation, File API upload with Active-state polling, response extraction into `Response{Text, Images, Audios, Attachments}`)
+- `lyria/` — lyrics → recipe → audio music-generation workflow facade using `gemini.MultimodalGenerator`
 
 ## Commands
 
@@ -31,6 +31,9 @@ Tests requiring GCP Application Default Credentials (Vertex AI client constructi
 - **Config**: `APIKey` (Gemini API) and `ProjectID`+`LocationID` (Vertex AI) are mutually exclusive; validation and backend selection live in `config.go`. Defaults (retry, file polling) are resolved once in `NewClient` — Client fields are always populated, no fallback at use sites.
 - **File API**: `UploadFile` returns an `UploadedFile{URI, Name}` struct — the two are both strings with different uses (`URI` goes into `genai.FileData`, `Name` into `DeleteFile`), so they are not returned as bare strings. It polls until the file is Active; on failure after a successful upload it fires `asyncDelete` (detached, fire-and-forget — there is no way to await it).
 - Public consumer-facing interfaces (`Generator`, `FileManager`, …) are in `interfaces.go`; `lyria` and downstream apps mock against these.
+- **Two entry points for multimodal input, and the difference is the SDK leak.** `GenerateWithParts` takes `[]*genai.Part`, so every caller *and every test mock* has to import genai. `GenerateWithAttachments` takes a prompt plus `[]Attachment` (`MIMEType` + either `Data` or `URI`) and builds the parts internally, which is what downstream repos should use — `MultimodalGenerator` is a single method and mocks in one line. Keep `GenerateWithParts` for callers that genuinely need Part-level control (interleaved ordering, per-part system instructions). `attachmentParts` in `attachment.go` is the one place that converts; it drops empty attachments (callers assemble optional images as "pass it if we have it"), rejects `Data`+`URI` together, and requires a MIME type only for inline data since a URI's type can be left to the server.
+- **`Response.Attachments` exists so callers don't have to read `RawResponse`.** `Images`/`Audios` are bytes only, so deciding a file extension or Content-Type meant walking the genai response. `Attachments` carries the MIME type alongside the bytes, in return order.
+- **`SafetyThreshold` and `ThinkingLevel` are aliases of the genai types**, with `SafetyBlockNone`/`ThinkingMinimal`/… constants re-exported. This keeps `NewSafetySettings`'s signature unchanged while letting callers pick a value without importing genai. Vertex AI rejects `SafetyOff`; use `SafetyBlockNone` there.
 - **Errors** live in `errors.go`. `APIResponseError` carries a `Reason` sentinel (`ErrBlocked` / `ErrEmptyResponse`) plus the `FinishReason`, and `Unwrap` returns the sentinel so `errors.Is` classifies it. Input-validation sentinels (`ErrEmptyPrompt`, …) are Japanese and part of the public API; the newer response sentinels are English.
 - **`genai.FinishReason` has two "unset" values.** Its Go zero value is `""`, but the SDK constant `FinishReasonUnspecified` is the string `"FINISH_REASON_UNSPECIFIED"`. Comparing only against the constant misclassifies streaming chunks (which carry no finish reason) as blocked. Always go through `isUnsetFinishReason` / `isBlockedFinishReason`.
 - **`extractText` concatenates all non-`Thought` text parts.** Thinking-enabled models return the thought summary as a `Thought: true` part *before* the answer, and long answers can be split across parts — returning the first non-empty part gives you the wrong text. Thought parts are surfaced separately as `Response.Thoughts` via `extractThoughts`.
@@ -52,5 +55,5 @@ Tests requiring GCP Application Default Credentials (Vertex AI client constructi
 
 - Comments and error messages are largely Japanese; match the surrounding file.
 - Go 1.26 idioms are used (`errors.AsType`, `new(expr)`).
-- Update README.md when public API (Config fields, GenerateOptions, sentinel errors) changes — it documents them in tables.
+- Update README.md when public API (Config fields, GenerateOptions, sentinel errors, interfaces) changes — it documents them in tables. Sample code names concrete models; refresh them when the current generation moves on.
 - `CleanJSONResponse` is fuzzed (`FuzzCleanJSONResponse`, run for 60s in CI). Its invariant: if it changes the input at all, the result must be valid JSON — otherwise it leaves callers worse off than the raw string.
