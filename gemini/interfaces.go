@@ -19,6 +19,15 @@ type Generator interface {
 	IsVertexAI() bool
 }
 
+// MultimodalGenerator は、テキストとバイナリ添付からコンテンツを生成するインターフェースです。
+//
+// Generator と違い genai の型を含まないため、利用側はこのインターフェースにだけ依存すれば
+// genai SDK を import せずに済みます。モックも 1 メソッドで書けます。マルチモーダル入力を
+// Part 単位で細かく組み立てる必要がある場合は Generator を使ってください。
+type MultimodalGenerator interface {
+	GenerateWithAttachments(ctx context.Context, modelName string, prompt string, attachments []Attachment, opts GenerateOptions) (*Response, error)
+}
+
 // FileManager は、Gemini API で使用するファイルのアップロードおよび管理を担います。
 type FileManager interface {
 	UploadFile(ctx context.Context, r io.Reader, mimeType, displayName string) (UploadedFile, error)
