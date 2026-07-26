@@ -13,10 +13,19 @@ type ContentGenerator interface {
 	GenerateContent(ctx context.Context, modelName string, prompt string) (*Response, error)
 }
 
+// BackendInspector は、利用中のバックエンドを判定するインターフェースです。
+//
+// Vertex AI と Gemini API では、受け付ける安全設定の閾値や、GCS URI を直接参照できるかが
+// 異なります。利用側がその差を吸収するために切り出しています。
+type BackendInspector interface {
+	// IsVertexAI は、Vertex AI バックエンドを使用しているかを返します。
+	IsVertexAI() bool
+}
+
 // Generator は、コンテンツ生成機能を担うインターフェースです。
 type Generator interface {
 	GenerateWithParts(ctx context.Context, modelName string, parts []*genai.Part, opts GenerateOptions) (*Response, error)
-	IsVertexAI() bool
+	BackendInspector
 }
 
 // MultimodalGenerator は、テキストとバイナリ添付からコンテンツを生成するインターフェースです。
@@ -38,6 +47,16 @@ type FileManager interface {
 type GenerativeModel interface {
 	Generator
 	FileManager
+}
+
+// MultimodalModel は、添付付き生成・ファイル管理・バックエンド判定を集約したインターフェースです。
+//
+// GenerativeModel の genai を伴わない対応物です。参照画像をアップロードしてから
+// 添付として渡すような、生成とファイル管理の両方を使う利用側がこれに依存します。
+type MultimodalModel interface {
+	MultimodalGenerator
+	FileManager
+	BackendInspector
 }
 
 // StreamGenerator は、ストリーミングでのコンテンツ生成を担うインターフェースです。

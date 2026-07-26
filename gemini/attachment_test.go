@@ -169,3 +169,100 @@ func TestAttachmentMatchesGenaiBlobShape(t *testing.T) {
 		t.Error("Attachment no longer maps cleanly onto genai.Blob")
 	}
 }
+
+// TestAttachmentPartsBuildsFileDataForURIs verifies a URI reference becomes a FileData part rather
+// than inline bytes. Vertex AI can read gs:// directly and the File API hands back a URI, so both
+// paths need to be expressible without the caller touching genai.
+func TestAttachmentPartsBuildsFileDataForURIs(t *testing.T) {
+	parts, err := attachmentParts("describe", []Attachment{
+		{URI: "gs://bucket/cover.png", MIMEType: "image/png"},
+		{URI: "files/abc123"},
+	})
+	if err != nil {
+		t.Fatalf("attachmentParts() error = %v", err)
+	}
+
+	if len(parts) != 3 {
+		t.Fatalf("parts = %d, want 3", len(parts))
+	}
+	if parts[1].FileData == nil || parts[1].FileData.FileURI != "gs://bucket/cover.png" {
+		t.Errorf("parts[1] = %+v, want the gs:// reference", parts[1])
+	}
+	if parts[1].FileData.MIMEType != "image/png" {
+		t.Errorf("parts[1] MIME type = %q, want it forwarded", parts[1].FileData.MIMEType)
+	}
+	// MIME type を推測できない URI は、サーバー側の判定に委ねられるよう空のまま送る。
+	if parts[2].FileData == nil || parts[2].FileData.MIMEType != "" {
+		t.Errorf("parts[2] = %+v, want an empty MIME type", parts[2])
+	}
+	if parts[1].InlineData != nil || parts[2].InlineData != nil {
+		t.Error("URI attachments must not be sent as inline data")
+	}
+}
+
+// TestAttachmentPartsRejectsDataAndURITogether verifies the two are exclusive. Sending both leaves
+// it to the API which one wins, and the caller almost certainly meant only one.
+func TestAttachmentPartsRejectsDataAndURITogether(t *testing.T) {
+	_, err := attachmentParts("prompt", []Attachment{
+		{MIMEType: "image/png", Data: []byte("bytes"), URI: "gs://bucket/cover.png"},
+	})
+
+	if err == nil {
+		t.Fatal("attachmentParts() error = nil, want an error")
+	}
+}
+
+// TestAttachmentIsEmptyCoversBothCarriers verifies the skip rule sees URI-only attachments as
+// present. Treating them as empty would silently drop every reference-based image.
+func TestAttachmentIsEmptyCoversBothCarriers(t *testing.T) {
+	tests := map[string]struct {
+		attachment Attachment
+		want       bool
+	}{
+		"nothing set": {attachment: Attachment{MIMEType: "image/png"}, want: true},
+		"data set":    {attachment: Attachment{Data: []byte("x")}, want: false},
+		"uri set":     {attachment: Attachment{URI: "files/abc"}, want: false},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := tt.attachment.IsEmpty(); got != tt.want {
+				t.Errorf("IsEmpty() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestResponseAttachmentsCarryMIMETypes verifies returned inline data keeps its MIME type. Images
+// and Audios are bytes only, so without this the caller has to read RawResponse — and import genai —
+// just to know what to name the file it saves.
+func TestResponseAttachmentsCarryMIMETypes(t *testing.T) {
+	raw := &genai.GenerateContentResponse{
+		Candidates: []*genai.Candidate{{
+			FinishReason: genai.FinishReasonStop,
+			Content: &genai.Content{Parts: []*genai.Part{
+				{InlineData: &genai.Blob{MIMEType: "image/png", Data: []byte("png")}},
+				{InlineData: &genai.Blob{MIMEType: "audio/mpeg", Data: []byte("mp3")}},
+			}},
+		}},
+	}
+
+	resp, err := responseFromGenAI(raw, true)
+	if err != nil {
+		t.Fatalf("responseFromGenAI() error = %v", err)
+	}
+
+	if len(resp.Attachments) != 2 {
+		t.Fatalf("attachments = %d, want 2", len(resp.Attachments))
+	}
+	if resp.Attachments[0].MIMEType != "image/png" || string(resp.Attachments[0].Data) != "png" {
+		t.Errorf("attachments[0] = %+v", resp.Attachments[0])
+	}
+	if resp.Attachments[1].MIMEType != "audio/mpeg" {
+		t.Errorf("attachments[1] MIME type = %q", resp.Attachments[1].MIMEType)
+	}
+	// 既存の Images / Audios は従来どおり振り分けられていること。
+	if len(resp.Images) != 1 || len(resp.Audios) != 1 {
+		t.Errorf("images = %d, audios = %d, want 1 each", len(resp.Images), len(resp.Audios))
+	}
+}
