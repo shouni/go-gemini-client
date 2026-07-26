@@ -20,6 +20,7 @@ var (
 	_ ContentGenerator    = (*Client)(nil)
 	_ GenerativeModel     = (*Client)(nil)
 	_ MultimodalGenerator = (*Client)(nil)
+	_ MultimodalModel     = (*Client)(nil)
 	_ StreamGenerator     = (*Client)(nil)
 	_ TokenCounter        = (*Client)(nil)
 )
@@ -219,11 +220,13 @@ func responseFromGenAI(resp *genai.GenerateContentResponse, lenient bool) (*Resp
 
 	var images [][]byte
 	var audios [][]byte
+	var attachments []Attachment
 	if len(resp.Candidates) > 0 && resp.Candidates[0] != nil && resp.Candidates[0].Content != nil {
 		for _, part := range resp.Candidates[0].Content.Parts {
 			if part.InlineData != nil {
 				mime := part.InlineData.MIMEType
 				data := part.InlineData.Data
+				attachments = append(attachments, Attachment{MIMEType: mime, Data: data})
 
 				// MIMEタイプで振り分け
 				if strings.HasPrefix(mime, "image/") {
@@ -239,6 +242,7 @@ func responseFromGenAI(resp *genai.GenerateContentResponse, lenient bool) (*Resp
 		Text:        text,
 		Images:      images,
 		Audios:      audios,
+		Attachments: attachments,
 		Thoughts:    extractThoughts(resp),
 		Usage:       tokenUsageFromMetadata(resp.UsageMetadata),
 		RawResponse: resp,

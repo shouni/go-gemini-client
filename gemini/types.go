@@ -108,6 +108,12 @@ type Response struct {
 	Text   string
 	Images [][]byte // 生成画像 (InlineData) を保持します
 	Audios [][]byte // Lyria 3 等の音声データ
+	// Attachments は返却されたインラインデータを MIME type 付きで保持します。
+	//
+	// Images / Audios はバイト列だけなので、保存時の拡張子や Content-Type を決めるには
+	// RawResponse を辿るしかありませんでした。それだと利用側が genai SDK を読む必要が出るため、
+	// 型を保ったまま取り出せる形を用意しています。順序は API の返却順です。
+	Attachments []Attachment
 	// Thoughts は思考サマリです。GenerateOptions.IncludeThoughts が true で、
 	// かつモデルが思考サマリを返した場合にのみ設定されます。
 	// Text には含まれません。
@@ -133,6 +139,26 @@ func (o *GenerateOptions) HasImageConfig() bool {
 	}
 	return o.AspectRatio != "" || o.ImageSize != "" || o.PersonGeneration != PersonGenerationUnspecified
 }
+
+// ThinkingLevel は、思考量の段階指定です。
+//
+// genai.ThinkingLevel の別名で、下の定数と合わせて使うことで、思考量を選ぶためだけに
+// genai SDK を import する必要をなくします。genai の値をそのまま渡すこともできます。
+type ThinkingLevel = genai.ThinkingLevel
+
+// 思考量の段階です。値は genai の対応する定数と同一です。
+const (
+	// ThinkingUnspecified はモデルのデフォルトに委ねます。
+	ThinkingUnspecified ThinkingLevel = genai.ThinkingLevelUnspecified
+	// ThinkingMinimal は思考をほぼ行わず、レイテンシとコストを最小化します。
+	ThinkingMinimal ThinkingLevel = genai.ThinkingLevelMinimal
+	// ThinkingLow は軽い思考を行います。
+	ThinkingLow ThinkingLevel = genai.ThinkingLevelLow
+	// ThinkingMedium は中程度の思考を行います。
+	ThinkingMedium ThinkingLevel = genai.ThinkingLevelMedium
+	// ThinkingHigh は最も深い思考を行います。品質は上がりますが遅く高価です。
+	ThinkingHigh ThinkingLevel = genai.ThinkingLevelHigh
+)
 
 // SafetyThreshold は、安全フィルタのブロック閾値です。
 //
