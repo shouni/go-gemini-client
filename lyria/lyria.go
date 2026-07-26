@@ -26,7 +26,7 @@ type Workflow struct {
 }
 
 // New は、指定された構成を使用して新しい Workflow を初期化して返します。
-func New(aiClient gemini.Generator, promptGen TextPromptGenerator, audioPromptBuilder AudioPromptBuilder, overrides ...Option) (*Workflow, error) {
+func New(aiClient gemini.MultimodalGenerator, promptGen TextPromptGenerator, audioPromptBuilder AudioPromptBuilder, overrides ...Option) (*Workflow, error) {
 	opts := applyOptions(overrides...)
 	if aiClient == nil {
 		return nil, errors.New("aiClient is required")

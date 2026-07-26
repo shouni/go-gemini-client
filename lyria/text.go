@@ -17,7 +17,7 @@ const defaultComposeMode = "default"
 
 // lyriaTextGenerator は Gemini を使った歌詞生成と楽曲レシピ生成をまとめて扱います。
 type lyriaTextGenerator struct {
-	aiClient     gemini.Generator
+	aiClient     gemini.MultimodalGenerator
 	promptGen    TextPromptGenerator
 	defaultModel string
 	limiter      *rate.Limiter // nil はレート制限なし（テストが構造体リテラルで直接構築するため）
@@ -47,8 +47,7 @@ func generateJSON[T any](ctx context.Context, g *lyriaTextGenerator, kind, model
 			}
 		}
 
-		parts := []*genai.Part{{Text: prompt}}
-		resp, err := g.aiClient.GenerateWithParts(execCtx, model, parts, buildJSONGenerateOptions(seed, schema))
+		resp, err := g.aiClient.GenerateWithAttachments(execCtx, model, prompt, nil, buildJSONGenerateOptions(seed, schema))
 		if err != nil {
 			return nil, fmt.Errorf("%s generation failed (model: %s): %w", kind, model, err)
 		}

@@ -10,12 +10,11 @@ import (
 	"github.com/shouni/go-gemini-client/gemini"
 	"golang.org/x/sync/singleflight"
 	"golang.org/x/time/rate"
-	"google.golang.org/genai"
 )
 
 // lyriaAudioGenerator は MusicRecipe を Lyria に渡し、音声バイナリを生成します。
 type lyriaAudioGenerator struct {
-	aiClient          gemini.Generator
+	aiClient          gemini.MultimodalGenerator
 	promptBuilder     AudioPromptBuilder
 	converter         ReadingConverter
 	defaultLyriaModel string
@@ -39,7 +38,6 @@ func (g *lyriaAudioGenerator) GenerateAudio(ctx context.Context, recipe *MusicRe
 	if recipe.IsJapanese() {
 		promptText = g.converter.ConvertToReading(promptText)
 	}
-	parts := g.buildMultiModalParts(promptText, images)
 	imageHash := calculateImagesHash(images)
 	key := singleflightKey("audio-full", targetModel, promptText, singleflightSeedKey(recipe.Seed), imageHash)
 	audio, err := doSingleflight(ctx, &g.group, key, g.execTimeout, func(execCtx context.Context) ([]byte, error) {
@@ -49,10 +47,11 @@ func (g *lyriaAudioGenerator) GenerateAudio(ctx context.Context, recipe *MusicRe
 			}
 		}
 
-		resp, err := g.aiClient.GenerateWithParts(
+		resp, err := g.aiClient.GenerateWithAttachments(
 			execCtx,
 			targetModel,
-			parts,
+			promptText,
+			images,
 			buildAudioGenerateOptions(recipe.Seed),
 		)
 		if err != nil {
@@ -69,24 +68,4 @@ func (g *lyriaAudioGenerator) GenerateAudio(ctx context.Context, recipe *MusicRe
 	}
 
 	return cloneBytes(audio), nil
-}
-
-// buildMultiModalParts はプロンプトと画像を Lyria 入力用の Part スライスにまとめます。
-// プロンプトの読み変換は言語判定を伴うため、呼び出し元で適用済みであることを前提とします。
-func (g *lyriaAudioGenerator) buildMultiModalParts(prompt string, images []ImagePayload) []*genai.Part {
-	parts := make([]*genai.Part, 0, len(images)+1)
-	parts = append(parts, &genai.Part{Text: prompt})
-
-	for _, img := range images {
-		if len(img.Data) == 0 {
-			continue
-		}
-		parts = append(parts, &genai.Part{
-			InlineData: &genai.Blob{
-				MIMEType: img.MIMEType,
-				Data:     img.Data,
-			},
-		})
-	}
-	return parts
 }
