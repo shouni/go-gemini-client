@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"golang.org/x/time/rate"
-	"google.golang.org/genai"
 )
 
 // --- Mocks ---
@@ -28,8 +27,8 @@ func (m *MockGeminiClient) GenerateContent(ctx context.Context, model, prompt st
 	return nil, args.Error(1)
 }
 
-func (m *MockGeminiClient) GenerateWithParts(ctx context.Context, modelName string, parts []*genai.Part, opts gemini.GenerateOptions) (*gemini.Response, error) {
-	args := m.Called(ctx, modelName, parts, opts)
+func (m *MockGeminiClient) GenerateWithAttachments(ctx context.Context, modelName string, prompt string, attachments []gemini.Attachment, opts gemini.GenerateOptions) (*gemini.Response, error) {
+	args := m.Called(ctx, modelName, prompt, attachments, opts)
 	if res, ok := args.Get(0).(*gemini.Response); ok {
 		return res, args.Error(1)
 	}
@@ -65,13 +64,6 @@ type fixedAudioPromptBuilder struct {
 
 func (b fixedAudioPromptBuilder) BuildFullSong(*MusicRecipe) string {
 	return b.fullSong
-}
-
-func partsWithText(t *testing.T, want string) interface{} {
-	t.Helper()
-	return mock.MatchedBy(func(parts []*genai.Part) bool {
-		return len(parts) == 1 && parts[0] != nil && parts[0].Text == want
-	})
 }
 
 func jsonGenerateOptionsWithSeed(t *testing.T, wantSeed *int64) interface{} {
@@ -171,18 +163,18 @@ func TestWorkflow_Run(t *testing.T) {
 
 	// 1. 作詞プロンプト生成
 	mPrompt.On("GenerateLyrics", "outro", contextText).Return("prompt-lyrics-text", nil)
-	mAI.On("GenerateWithParts", mock.Anything, "custom-text-model", partsWithText(t, "prompt-lyrics-text"), jsonGenerateOptionsWithSeed(t, ai.Seed)).Return(&gemini.Response{
+	mAI.On("GenerateWithAttachments", mock.Anything, "custom-text-model", "prompt-lyrics-text", mock.Anything, jsonGenerateOptionsWithSeed(t, ai.Seed)).Return(&gemini.Response{
 		Text: "```json\n" + lyricsJSON + "\n```",
 	}, nil)
 
 	// 2. 作曲レシピ生成
 	mPrompt.On("GenerateRecipe", "jazz", expectedLyrics).Return("prompt-recipe-text", nil)
-	mAI.On("GenerateWithParts", mock.Anything, "custom-text-model", partsWithText(t, "prompt-recipe-text"), jsonGenerateOptionsWithSeed(t, ai.Seed)).Return(&gemini.Response{
+	mAI.On("GenerateWithAttachments", mock.Anything, "custom-text-model", "prompt-recipe-text", mock.Anything, jsonGenerateOptionsWithSeed(t, ai.Seed)).Return(&gemini.Response{
 		Text: recipeJSON,
 	}, nil)
 
 	// 3. 音声生成実行
-	mAI.On("GenerateWithParts", mock.Anything, "lyria-custom-v1", mock.Anything, mock.Anything).Return(&gemini.Response{
+	mAI.On("GenerateWithAttachments", mock.Anything, "lyria-custom-v1", mock.Anything, mock.Anything, mock.Anything).Return(&gemini.Response{
 		Audios: [][]byte{fakeWav},
 	}, nil)
 
@@ -238,7 +230,7 @@ func TestWorkflow_Compose(t *testing.T) {
 	}`
 
 	mPrompt.On("GenerateRecipe", mode, lyrics).Return(expectedPrompt, nil)
-	mAI.On("GenerateWithParts", mock.Anything, "gemini-flash", partsWithText(t, expectedPrompt), jsonGenerateOptionsWithSeed(t, nil)).Return(&gemini.Response{
+	mAI.On("GenerateWithAttachments", mock.Anything, "gemini-flash", expectedPrompt, mock.Anything, jsonGenerateOptionsWithSeed(t, nil)).Return(&gemini.Response{
 		Text: rawJSON,
 	}, nil)
 
@@ -274,12 +266,12 @@ func TestNewUsesAudioPromptBuilder(t *testing.T) {
 	)
 	assert.NoError(t, err)
 
-	mAI.On("GenerateWithParts",
+	mAI.On("GenerateWithAttachments",
 		mock.Anything,
 		"lyria-3",
-		partsWithText(t, "custom full prompt"),
+		"custom full prompt",
 		mock.Anything,
-	).Return(&gemini.Response{Audios: [][]byte{{1, 2, 3}}}, nil)
+		mock.Anything).Return(&gemini.Response{Audios: [][]byte{{1, 2, 3}}}, nil)
 
 	audio, err := workflow.GenerateAudio(ctx, &MusicRecipe{Title: "Song"}, nil)
 
@@ -302,7 +294,7 @@ func TestNewUsesTextRateInterval(t *testing.T) {
 	assert.NoError(t, err)
 
 	mPrompt.On("GenerateLyrics", mock.Anything, mock.Anything).Return("prompt-text", nil)
-	mAI.On("GenerateWithParts", mock.Anything, "gemini-flash", mock.Anything, mock.Anything).Return(&gemini.Response{
+	mAI.On("GenerateWithAttachments", mock.Anything, "gemini-flash", mock.Anything, mock.Anything, mock.Anything).Return(&gemini.Response{
 		Text: `{"title":"t","theme":"th","hook":"h","lyrics":"l"}`,
 	}, nil).Twice()
 
@@ -329,12 +321,12 @@ func TestNewUsesReadingConverterOption(t *testing.T) {
 	)
 	assert.NoError(t, err)
 
-	mAI.On("GenerateWithParts",
+	mAI.On("GenerateWithAttachments",
 		mock.Anything,
 		"lyria-3",
-		partsWithText(t, "converted prompt"),
+		"converted prompt",
 		mock.Anything,
-	).Return(&gemini.Response{Audios: [][]byte{{1, 2, 3}}}, nil)
+		mock.Anything).Return(&gemini.Response{Audios: [][]byte{{1, 2, 3}}}, nil)
 
 	audio, err := workflow.GenerateAudio(ctx, &MusicRecipe{Title: "Song"}, nil)
 
@@ -357,12 +349,12 @@ func TestGenerateAudioSkipsReadingConverterForEnglish(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Lang が "en" の場合、ReadingConverter を通さず元のプロンプトが使われること
-	mAI.On("GenerateWithParts",
+	mAI.On("GenerateWithAttachments",
 		mock.Anything,
 		"lyria-3",
-		partsWithText(t, "english full prompt"),
+		"english full prompt",
 		mock.Anything,
-	).Return(&gemini.Response{Audios: [][]byte{{1, 2, 3}}}, nil)
+		mock.Anything).Return(&gemini.Response{Audios: [][]byte{{1, 2, 3}}}, nil)
 
 	audio, err := workflow.GenerateAudio(ctx, &MusicRecipe{Title: "Song", AIModels: AIModels{Lang: LangEnglish}}, nil)
 
@@ -384,12 +376,12 @@ func TestGenerateAudioNilLimiterDoesNotPanic(t *testing.T) {
 		// limiter は意図的に nil のまま
 	}
 
-	mAI.On("GenerateWithParts",
+	mAI.On("GenerateWithAttachments",
 		mock.Anything,
 		"lyria-3",
-		partsWithText(t, "full prompt"),
+		"full prompt",
 		mock.Anything,
-	).Return(&gemini.Response{Audios: [][]byte{{1, 2, 3}}}, nil)
+		mock.Anything).Return(&gemini.Response{Audios: [][]byte{{1, 2, 3}}}, nil)
 
 	audio, err := generator.GenerateAudio(ctx, &MusicRecipe{Title: "Song"}, nil)
 
@@ -421,7 +413,7 @@ func TestGenerateLyrics_ErrorBranches(t *testing.T) {
 			name: "AI returns an error",
 			setup: func(mAI *MockGeminiClient, mPrompt *MockPromptGen) {
 				mPrompt.On("GenerateLyrics", mock.Anything, mock.Anything).Return("p", nil)
-				mAI.On("GenerateWithParts", mock.Anything, model, mock.Anything, mock.Anything).
+				mAI.On("GenerateWithAttachments", mock.Anything, model, mock.Anything, mock.Anything, mock.Anything).
 					Return(nil, errors.New("ai boom"))
 			},
 			wantErr: "lyrics generation failed",
@@ -430,7 +422,7 @@ func TestGenerateLyrics_ErrorBranches(t *testing.T) {
 			name: "AI returns a nil response",
 			setup: func(mAI *MockGeminiClient, mPrompt *MockPromptGen) {
 				mPrompt.On("GenerateLyrics", mock.Anything, mock.Anything).Return("p", nil)
-				mAI.On("GenerateWithParts", mock.Anything, model, mock.Anything, mock.Anything).
+				mAI.On("GenerateWithAttachments", mock.Anything, model, mock.Anything, mock.Anything, mock.Anything).
 					Return((*gemini.Response)(nil), nil)
 			},
 			wantErr: "lyrics response is nil",
@@ -439,7 +431,7 @@ func TestGenerateLyrics_ErrorBranches(t *testing.T) {
 			name: "AI returns an empty string",
 			setup: func(mAI *MockGeminiClient, mPrompt *MockPromptGen) {
 				mPrompt.On("GenerateLyrics", mock.Anything, mock.Anything).Return("p", nil)
-				mAI.On("GenerateWithParts", mock.Anything, model, mock.Anything, mock.Anything).
+				mAI.On("GenerateWithAttachments", mock.Anything, model, mock.Anything, mock.Anything, mock.Anything).
 					Return(&gemini.Response{Text: "   "}, nil)
 			},
 			wantErr: "AI returned an empty string",
@@ -448,7 +440,7 @@ func TestGenerateLyrics_ErrorBranches(t *testing.T) {
 			name: "schema-valid JSON but empty lyrics",
 			setup: func(mAI *MockGeminiClient, mPrompt *MockPromptGen) {
 				mPrompt.On("GenerateLyrics", mock.Anything, mock.Anything).Return("p", nil)
-				mAI.On("GenerateWithParts", mock.Anything, model, mock.Anything, mock.Anything).
+				mAI.On("GenerateWithAttachments", mock.Anything, model, mock.Anything, mock.Anything, mock.Anything).
 					Return(&gemini.Response{Text: `{"title":"t","theme":"th","lyrics":""}`}, nil)
 			},
 			wantErr: "lyrics draft is empty",
@@ -500,7 +492,7 @@ func TestCompose_ErrorBranches(t *testing.T) {
 			name: "AI returns an error",
 			setup: func(mAI *MockGeminiClient, mPrompt *MockPromptGen) {
 				mPrompt.On("GenerateRecipe", mock.Anything, mock.Anything).Return("p", nil)
-				mAI.On("GenerateWithParts", mock.Anything, model, mock.Anything, mock.Anything).
+				mAI.On("GenerateWithAttachments", mock.Anything, model, mock.Anything, mock.Anything, mock.Anything).
 					Return(nil, errors.New("ai boom"))
 			},
 			wantErr: "compose generation failed",
@@ -509,7 +501,7 @@ func TestCompose_ErrorBranches(t *testing.T) {
 			name: "AI returns a nil response",
 			setup: func(mAI *MockGeminiClient, mPrompt *MockPromptGen) {
 				mPrompt.On("GenerateRecipe", mock.Anything, mock.Anything).Return("p", nil)
-				mAI.On("GenerateWithParts", mock.Anything, model, mock.Anything, mock.Anything).
+				mAI.On("GenerateWithAttachments", mock.Anything, model, mock.Anything, mock.Anything, mock.Anything).
 					Return((*gemini.Response)(nil), nil)
 			},
 			wantErr: "compose response is nil",
@@ -518,7 +510,7 @@ func TestCompose_ErrorBranches(t *testing.T) {
 			name: "AI returns an empty string",
 			setup: func(mAI *MockGeminiClient, mPrompt *MockPromptGen) {
 				mPrompt.On("GenerateRecipe", mock.Anything, mock.Anything).Return("p", nil)
-				mAI.On("GenerateWithParts", mock.Anything, model, mock.Anything, mock.Anything).
+				mAI.On("GenerateWithAttachments", mock.Anything, model, mock.Anything, mock.Anything, mock.Anything).
 					Return(&gemini.Response{Text: ""}, nil)
 			},
 			wantErr: "AI returned an empty string",
@@ -566,12 +558,12 @@ func TestGenerateAudioKeepsSeed(t *testing.T) {
 		limiter:           rate.NewLimiter(rate.Inf, 0),
 	}
 
-	mAI.On("GenerateWithParts",
+	mAI.On("GenerateWithAttachments",
 		mock.Anything,
 		"lyria-3",
-		partsWithText(t, "full prompt"),
-		audioGenerateOptionsWithSeed(t, &seed, ""),
-	).Return(&gemini.Response{Audios: [][]byte{{1, 2, 3}}}, nil)
+		"full prompt",
+		mock.Anything,
+		audioGenerateOptionsWithSeed(t, &seed, "")).Return(&gemini.Response{Audios: [][]byte{{1, 2, 3}}}, nil)
 
 	audio, err := generator.GenerateAudio(ctx, &MusicRecipe{Title: "Song", AIModels: AIModels{Seed: &seed}}, nil)
 

@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/singleflight"
 	"golang.org/x/time/rate"
-	"google.golang.org/genai"
 )
 
 // staticPromptGen はテスト用の固定プロンプト生成器です。
@@ -68,7 +67,7 @@ func (c *blockingGeminiClient) GenerateContent(context.Context, string, string) 
 	return c.contentResp, nil
 }
 
-func (c *blockingGeminiClient) GenerateWithParts(context.Context, string, []*genai.Part, gemini.GenerateOptions) (*gemini.Response, error) {
+func (c *blockingGeminiClient) GenerateWithAttachments(context.Context, string, string, []gemini.Attachment, gemini.GenerateOptions) (*gemini.Response, error) {
 	c.partsCalls.Add(1)
 	c.partsStarted.Do(func() { close(c.partsStartedCh) })
 	<-c.releasePartsCh
