@@ -26,12 +26,13 @@ func skipWithoutGCPCredentials(t *testing.T) {
 }
 
 type fakeModelClient struct {
-	calls     int
-	gotModel  string
-	gotConfig *genai.GenerateContentConfig
-	resp      *genai.GenerateContentResponse
-	err       error
-	errs      []error // 呼び出し順に返すエラー。使い切った後は resp / err に従う
+	calls       int
+	gotModel    string
+	gotConfig   *genai.GenerateContentConfig
+	gotContents []*genai.Content
+	resp        *genai.GenerateContentResponse
+	err         error
+	errs        []error // 呼び出し順に返すエラー。使い切った後は resp / err に従う
 
 	countTokensResp  *genai.CountTokensResponse
 	countTokensErr   error
@@ -41,10 +42,11 @@ type fakeModelClient struct {
 	streamErr    error
 }
 
-func (f *fakeModelClient) GenerateContent(_ context.Context, model string, _ []*genai.Content, config *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error) {
+func (f *fakeModelClient) GenerateContent(_ context.Context, model string, contents []*genai.Content, config *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error) {
 	f.calls++
 	f.gotModel = model
 	f.gotConfig = config
+	f.gotContents = contents
 	if f.calls <= len(f.errs) {
 		if e := f.errs[f.calls-1]; e != nil {
 			return nil, e

@@ -17,10 +17,11 @@ import (
 // これらのアサーションがないと、Client のメソッドシグネチャがドリフトしても
 // 下流の利用側がビルドされるまで気付けません。
 var (
-	_ ContentGenerator = (*Client)(nil)
-	_ GenerativeModel  = (*Client)(nil)
-	_ StreamGenerator  = (*Client)(nil)
-	_ TokenCounter     = (*Client)(nil)
+	_ ContentGenerator    = (*Client)(nil)
+	_ GenerativeModel     = (*Client)(nil)
+	_ MultimodalGenerator = (*Client)(nil)
+	_ StreamGenerator     = (*Client)(nil)
+	_ TokenCounter        = (*Client)(nil)
 )
 
 // Client は Gemini SDK をラップしたメイン構造体です。

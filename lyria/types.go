@@ -1,5 +1,7 @@
 package lyria
 
+import "github.com/shouni/go-gemini-client/gemini"
+
 // AIModels selects the text and audio models used by Lyria generation.
 //
 // MusicRecipe に埋め込まれるため、JSON タグは MusicRecipe の他のフィールドと
@@ -61,10 +63,11 @@ type MusicSection struct {
 }
 
 // ImagePayload is an optional multimodal image input for audio generation.
-type ImagePayload struct {
-	Data     []byte
-	MIMEType string
-}
+//
+// gemini.Attachment の別名です。「MIME type とバイト列」という同じ概念を 2 か所で定義すると、
+// 呼び出し側が同じ内容を詰め替える羽目になります。別名にしてあるので、既存の
+// lyria.ImagePayload{Data: ..., MIMEType: ...} はそのまま書けます。
+type ImagePayload = gemini.Attachment
 
 // CollectedContent is the text and image context used for lyrics and music generation.
 type CollectedContent struct {

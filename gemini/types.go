@@ -134,10 +134,31 @@ func (o *GenerateOptions) HasImageConfig() bool {
 	return o.AspectRatio != "" || o.ImageSize != "" || o.PersonGeneration != PersonGenerationUnspecified
 }
 
+// SafetyThreshold は、安全フィルタのブロック閾値です。
+//
+// genai.HarmBlockThreshold の別名で、下の定数と合わせて使うことで、閾値を選ぶためだけに
+// genai SDK を import する必要をなくします。genai の値をそのまま渡すこともできます。
+type SafetyThreshold = genai.HarmBlockThreshold
+
+// 安全フィルタのブロック閾値です。値は genai の対応する定数と同一です。
+const (
+	// SafetyBlockNone は、安全フィルタによるブロックを行いません。
+	SafetyBlockNone SafetyThreshold = genai.HarmBlockThresholdBlockNone
+	// SafetyBlockLowAndAbove は、低リスク以上をブロックする最も厳しい設定です。
+	SafetyBlockLowAndAbove SafetyThreshold = genai.HarmBlockThresholdBlockLowAndAbove
+	// SafetyBlockMediumAndAbove は、中リスク以上をブロックします。
+	SafetyBlockMediumAndAbove SafetyThreshold = genai.HarmBlockThresholdBlockMediumAndAbove
+	// SafetyBlockOnlyHigh は、高リスクのみをブロックします。
+	SafetyBlockOnlyHigh SafetyThreshold = genai.HarmBlockThresholdBlockOnlyHigh
+	// SafetyOff は、安全フィルタ自体を無効にします。BlockNone との違いはバックエンドの
+	// 対応状況によるため、意図して使い分ける場合以外は SafetyBlockNone を選んでください。
+	SafetyOff SafetyThreshold = genai.HarmBlockThresholdOff
+)
+
 // NewSafetySettings は、標準的な4つのハームカテゴリ（暴力・ヘイト・性的表現・危険行為）
 // すべてに同一の閾値を適用した SafetySetting のスライスを返します。
 // 閾値をバックエンドや用途に応じてどう選ぶかは呼び出し側の判断に委ねます。
-func NewSafetySettings(threshold genai.HarmBlockThreshold) []*genai.SafetySetting {
+func NewSafetySettings(threshold SafetyThreshold) []*genai.SafetySetting {
 	return []*genai.SafetySetting{
 		{Category: genai.HarmCategoryHarassment, Threshold: threshold},
 		{Category: genai.HarmCategoryHateSpeech, Threshold: threshold},
