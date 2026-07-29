@@ -22,7 +22,7 @@
 
 - **Dual Backend**: `APIKey` 方式と `ProjectID` / `LocationID` 方式の両方に対応。
 - **Vertex AI 連携**: Cloud Run などの環境ではサービスアカウントや Application Default Credentials を利用できます。
-- **GCS 直接参照**: Vertex AI では `gs://` URI を `genai.Part` として直接プロンプトに含められます。
+- **GCS 直接参照**: Vertex AI では `gs://` URI を `gemini.Attachment{URI: ...}` として直接プロンプトに含められます。
 
 ### 🛡️ 堅牢な AI クライアント (`gemini`)
 
@@ -30,6 +30,7 @@
 - **リトライ不要エラーの判定**: セーフティフィルタによるブロックや空レスポンスなど、再試行しても解決しにくい API レスポンスエラーを識別します。
 - **決定論的な制御**: `Seed` により、生成結果の再現性を必要とするワークフローをサポートします。
 - **型安全なエラー判定**: 設定不備や入力不備はセンチネルエラーとして公開しており、`errors.Is` で判定できます。
+- **SDK 型を漏らさない入口**: `GenerateWithAttachments` と `gemini.Attachment` を使えば、マルチモーダル生成・構造化出力・安全設定・思考量のいずれも genai SDK を import せずに書けます。モックも 1 メソッドで済みます。
 - **ストリーミング生成**: `GenerateContentStream` / `GenerateWithPartsStream` で `iter.Seq2` によるチャンク単位のレスポンスを受け取れます。
 - **トークン数の事前計測**: `CountTokens` / `CountTokensWithParts` で、実際に生成せずにプロンプトのトークン数を見積もれます。
 
@@ -37,7 +38,7 @@
 
 - **File API サポート**: ファイルアップロード後、利用可能な `Active` 状態になるまで自動でポーリングします。
 - **自動クリーンアップ**: Active 化に失敗した File API オブジェクトはバックグラウンドで削除を試みます。
-- **レスポンス抽出**: テキスト、生成画像、生成音声、トークン使用量 (`Usage`) を `gemini.Response` にまとめて返します。
+- **レスポンス抽出**: テキスト、生成画像、生成音声、MIME type 付きの添付 (`Attachments`)、トークン使用量 (`Usage`) を `gemini.Response` にまとめて返します。
 
 ### 🎼 Lyria ワークフロー (`lyria`)
 
@@ -78,7 +79,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	resp, err := client.GenerateContent(ctx, "gemini-2.5-flash", "Goで短い俳句を書いて")
+	resp, err := client.GenerateContent(ctx, "gemini-3.6-flash", "Goで短い俳句を書いて")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -105,27 +106,39 @@ Vertex AI モードでは、Google Cloud 側の認証情報を利用します。
 
 ## 🧩 マルチモーダル生成
 
-`GenerateWithParts` は公式 SDK の `genai.Part` をそのまま受け取ります。テキスト、画像、GCS URI、File API の URI などを組み合わせた入力に対応できます。
+`GenerateWithAttachments` は、テキストと添付（画像・音声・PDF など）を genai SDK の型を使わずに渡せる入口です。`gemini.Attachment` はバイト列と URI 参照のどちらも表現できます。
 
 ```go
-parts := []*genai.Part{
-	{
-		FileData: &genai.FileData{
-			URI:      "gs://my-bucket/sample.jpg",
-			MIMEType: "image/jpeg",
-		},
+resp, err := client.GenerateWithAttachments(ctx, "gemini-3.6-flash",
+	"この画像の内容を日本語で要約してください",
+	[]gemini.Attachment{
+		// Vertex AI では gs:// を直接参照でき、File API の files/... も同じ形で渡せます。
+		{URI: "gs://my-bucket/sample.jpg", MIMEType: "image/jpeg"},
+		// バイト列を送る場合は Data を使います（URI とは排他）。
+		// {MIMEType: "image/png", Data: pngBytes},
 	},
-	{Text: "この画像の内容を日本語で要約してください"},
-}
-
-resp, err := client.GenerateWithParts(ctx, "gemini-2.5-flash", parts, gemini.GenerateOptions{
-	SystemPrompt: "簡潔に回答してください。",
-})
+	gemini.GenerateOptions{SystemPrompt: "簡潔に回答してください。"})
 if err != nil {
 	return err
 }
 
 fmt.Println(resp.Text)
+```
+
+添付の扱いは次のとおりです。
+
+- `Data` と `URI` は排他で、両方設定するとエラーになります
+- `Data` を送る場合 `MIMEType` は必須、`URI` を参照する場合は任意（省略するとサーバー側の判定に委ねます）
+- どちらも空の要素は読み飛ばされます。参照画像を「あれば渡す」形で組み立てる呼び出し側が、空要素の除去を毎回書かずに済みます
+- プロンプトが空でも添付があれば送信できます（音声だけを渡して解析させる用途）
+
+プロンプトは添付より前に置かれます。GCS URI とインラインデータを任意の順序で混在させたい、System instruction を Part 単位で組み立てたい、といった場合は `GenerateWithParts` で公式 SDK の `genai.Part` を直接渡してください。
+
+```go
+resp, err := client.GenerateWithParts(ctx, "gemini-3.6-flash", []*genai.Part{
+	{FileData: &genai.FileData{URI: "gs://my-bucket/sample.jpg", MIMEType: "image/jpeg"}},
+	{Text: "この画像の内容を日本語で要約してください"},
+}, gemini.GenerateOptions{})
 ```
 
 ---
@@ -134,10 +147,12 @@ fmt.Println(resp.Text)
 
 `ResponseMIMEType` に `image/*` または `audio/*` を指定すると、レスポンスモダリティが自動設定されます。Inline data は `Response.Images` または `Response.Audios` に格納されます。
 
+MIME type も必要な場合は `Response.Attachments` を使います。`Images` / `Audios` はバイト列だけなので、保存時の拡張子や Content-Type を決めるには本来 `RawResponse` を辿る必要がありました。`Attachments` は返却順のまま `gemini.Attachment`（MIME type + バイト列）で受け取れます。
+
 ```go
 seed := int64(1234)
 
-resp, err := client.GenerateWithParts(ctx, "gemini-2.5-flash-image-preview", []*genai.Part{
+resp, err := client.GenerateWithParts(ctx, "gemini-3.1-flash-image", []*genai.Part{
 	{Text: "青い招き猫のステッカー画像を生成して"},
 }, gemini.GenerateOptions{
 	ResponseMIMEType: "image/png",
@@ -151,6 +166,11 @@ if err != nil {
 
 if len(resp.Images) > 0 {
 	// resp.Images[0] contains image bytes.
+}
+
+for _, attachment := range resp.Attachments {
+	// attachment.MIMEType で保存時の拡張子や Content-Type を決められます。
+	_ = attachment
 }
 ```
 
@@ -173,7 +193,7 @@ if err != nil {
 }
 defer client.DeleteFile(context.Background(), uploaded.Name)
 
-resp, err := client.GenerateWithParts(ctx, "gemini-2.5-flash", []*genai.Part{
+resp, err := client.GenerateWithParts(ctx, "gemini-3.6-flash", []*genai.Part{
 	{
 		FileData: &genai.FileData{
 			URI:      uploaded.URI,
@@ -191,7 +211,7 @@ resp, err := client.GenerateWithParts(ctx, "gemini-2.5-flash", []*genai.Part{
 `GenerateContentStream` / `GenerateWithPartsStream` は、genai SDK の `iter.Seq2` をそのまま `gemini.Response` のストリームに変換して返します。チャンク単位でエラーが発生した場合は、そのチャンクの `error` 戻り値として伝播します（ストリーム開始後のリトライは行いません）。
 
 ```go
-seq, err := client.GenerateContentStream(ctx, "gemini-2.5-flash", "Goについて3行で説明して")
+seq, err := client.GenerateContentStream(ctx, "gemini-3.6-flash", "Goについて3行で説明して")
 if err != nil {
 	return err
 }
@@ -211,7 +231,7 @@ for resp, err := range seq {
 `CountTokens` / `CountTokensWithParts` は、実際に生成を行わずにプロンプトのトークン数だけを計測します。事前のコスト見積もりやコンテキスト長の検証に使えます。
 
 ```go
-total, err := client.CountTokens(ctx, "gemini-2.5-flash", "Goについて3行で説明して")
+total, err := client.CountTokens(ctx, "gemini-3.6-flash", "Goについて3行で説明して")
 if err != nil {
 	return err
 }
@@ -231,8 +251,8 @@ workflow, err := lyria.New(
 	client,
 	promptGenerator,
 	audioPromptBuilder,
-	lyria.WithGeminiModel("gemini-2.5-flash"),
-	lyria.WithLyriaModel("lyria-realtime-exp"),
+	lyria.WithGeminiModel("gemini-3.6-flash"),
+	lyria.WithLyriaModel("lyria-3-pro-preview"),
 )
 if err != nil {
 	return err
@@ -277,24 +297,26 @@ recipe, wavBytes, err := workflow.Run(ctx, lyria.AIModels{}, &lyria.CollectedCon
 | `MaxOutputTokens` | 生成する最大トークン数。0 で SDK デフォルト。 |
 | `StopSequences` | 生成を打ち切る文字列のリスト。 |
 | `ThinkingBudget` | 思考トークンの上限（`*int32`）。`Ptr[int32](0)` で思考を無効化しコストとレイテンシを抑えます。nil でモデル既定。有効範囲はモデル依存です。 |
-| `ThinkingLevel` | 思考量の段階指定（`MINIMAL` / `LOW` / `MEDIUM` / `HIGH`）。モデル非依存で移植性が高い方の指定方法です。`ThinkingBudget` と併用した場合はこちらが優先されます。 |
+| `ThinkingLevel` | 思考量の段階指定（`gemini.ThinkingMinimal` / `ThinkingLow` / `ThinkingMedium` / `ThinkingHigh`）。モデル非依存で移植性が高い方の指定方法です。`ThinkingBudget` と併用した場合はこちらが優先されます。 |
 | `IncludeThoughts` | true にすると思考サマリが `Response.Thoughts` に入ります（`Text` には含まれません）。 |
 | `AspectRatio` | 画像生成時のアスペクト比を指定します。 |
 | `ImageSize` | 画像生成時のサイズを指定します。 |
 | `Seed` | 再現性のためのシード値。`int32` の範囲内である必要があります。 |
 | `PersonGeneration` | Vertex AI 画像生成での人物生成ポリシーを指定します。 |
-| `SafetySettings` | SDK の SafetySettings を指定します。 |
+| `SafetySettings` | 安全フィルタの設定。`gemini.NewSafetySettings(gemini.SafetyBlockNone)` で構築できます。 |
 | `ResponseMIMEType` | `image/png` や `audio/wav` など、期待するレスポンス MIME type を指定します。 |
 | `ResponseSchema` | 構造化出力（constrained decoding）のスキーマ。`application/json` と併用すると、出力が文法レベルでスキーマに制約されます。 |
 | `ResponseJSONSchema` | 標準的な JSON Schema による構造化出力。`$ref` を含む複雑なスキーマで `ResponseSchema` がうまく機能しない場合の代替です。併用した場合はこちらが優先されます。 |
 
-標準的な4つのハームカテゴリ（暴力・ヘイト・性的表現・危険行為）すべてに同一の閾値を適用したい場合は、`gemini.NewSafetySettings(threshold)` ヘルパーを使うと `SafetySettings` を簡潔に構築できます。閾値をバックエンドや用途に応じてどう選ぶかは呼び出し側の判断に委ねています。
+標準的な4つのハームカテゴリ（暴力・ヘイト・性的表現・危険行為）すべてに同一の閾値を適用したい場合は、`gemini.NewSafetySettings(threshold)` ヘルパーを使うと `SafetySettings` を簡潔に構築できます。閾値をバックエンドや用途に応じてどう選ぶかは呼び出し側の判断に委ねています（Vertex AI は `SafetyOff` を受け付けません）。
 
 ```go
 opts := gemini.GenerateOptions{
-    SafetySettings: gemini.NewSafetySettings(genai.HarmBlockThresholdBlockNone),
+    SafetySettings: gemini.NewSafetySettings(gemini.SafetyBlockNone),
 }
 ```
+
+閾値は `gemini.SafetyBlockNone` / `SafetyBlockLowAndAbove` / `SafetyBlockMediumAndAbove` / `SafetyBlockOnlyHigh` / `SafetyOff` から選べます。同様に思考量も `gemini.ThinkingMinimal` / `ThinkingLow` / `ThinkingMedium` / `ThinkingHigh` を用意しており、これらを使えば設定値を選ぶためだけに genai SDK を import する必要はありません。
 
 ### エラーの分類
 
@@ -344,12 +366,32 @@ if err := json.Unmarshal([]byte(jsonStr), &out); err != nil {
 
 ---
 
+## 🔌 インターフェース
+
+`*gemini.Client` はこれらをすべて満たします。利用側は必要な範囲だけに依存すると、モックが小さくなります。
+
+| インターフェース | メソッド | genai 型 |
+| --- | --- | --- |
+| `ContentGenerator` | `GenerateContent` | 含まない |
+| `MultimodalGenerator` | `GenerateWithAttachments` | 含まない |
+| `BackendInspector` | `IsVertexAI` | 含まない |
+| `FileManager` | `UploadFile` / `DeleteFile` | 含まない |
+| `MultimodalModel` | 上記 3 つ（生成・ファイル管理・バックエンド判定）の集合 | 含まない |
+| `Generator` | `GenerateWithParts` + `IsVertexAI` | **含む** |
+| `GenerativeModel` | `Generator` + `FileManager` | **含む** |
+| `StreamGenerator` | `GenerateContentStream` / `GenerateWithPartsStream` | **含む** |
+| `TokenCounter` | `CountTokens` / `CountTokensWithParts` | **含む** |
+
+`Generator` 系は `genai.Part` をシグネチャに持つため、実装・モックする側も genai SDK を参照することになります。Part を直接組み立てる必要がなければ `MultimodalGenerator` / `MultimodalModel` を選んでください。
+
+---
+
 ## 📂 パッケージ構成
 
 | パッケージ | 役割 |
 | --- | --- |
 | `github.com/shouni/go-gemini-client/gemini` | Gemini / Vertex AI クライアント、リトライ、File API、レスポンス抽出。 |
-| `github.com/shouni/go-gemini-client/lyria` | 歌詞生成、作曲レシピ生成、Lyria 音声生成の統合アダプタ。 |
+| `github.com/shouni/go-gemini-client/lyria` | 歌詞生成、作曲レシピ生成、Lyria 音声生成の統合アダプタ。`lyria.New` は `gemini.MultimodalGenerator` を受け取ります。 |
 
 ---
 
