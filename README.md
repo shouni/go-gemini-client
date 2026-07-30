@@ -12,7 +12,7 @@
 
 **Go Gemini Client** は、[shouni/netarmor](https://github.com/shouni/netarmor) をリトライ基盤に採用した、**Google Gemini API / Vertex AI** 向けの Go ライブラリです。
 
-ひとつのクライアントで、API Key 方式の **Gemini API (Google AI Studio)** と、Google Cloud 認証を使う **Vertex AI** を切り替えて利用できます。テキスト生成だけでなく、GCS URI や File API を使ったマルチモーダル入力、画像・音声レスポンス、Lyria による音楽生成ワークフローも扱えるように設計されています。
+ひとつのクライアントで、API Key 方式の **Gemini API (Google AI Studio)** と、Google Cloud 認証を使う **Vertex AI** を切り替えて利用できます。テキスト生成だけでなく、GCS URI や File API を使ったマルチモーダル入力、画像・音声レスポンス、Lyria による音楽生成、Veo による動画生成も扱えるように設計されています。
 
 ---
 
@@ -39,12 +39,6 @@
 - **File API サポート**: ファイルアップロード後、利用可能な `Active` 状態になるまで自動でポーリングします。
 - **自動クリーンアップ**: Active 化に失敗した File API オブジェクトはバックグラウンドで削除を試みます。
 - **レスポンス抽出**: テキスト、生成画像、生成音声、MIME type 付きの添付 (`Attachments`)、トークン使用量 (`Usage`) を `gemini.Response` にまとめて返します。
-
-### 🎼 Lyria ワークフロー (`lyria`)
-
-- **3 段の役割分担**: 歌詞生成 (`Lyricist`)、作曲レシピ生成 (`Composer`)、Lyria 音声生成 (`AudioGenerator`) をそれぞれ独立して呼べます。段の間に品質ゲートを挟むのは利用側の判断です。
-- **構造化出力**: 歌詞・レシピ生成は `ResponseSchema` による constrained decoding を使い、JSON 以外のノイズ混入を防ぎます。
-- **重複呼び出し抑制**: singleflight により、同一条件の音声生成リクエストをまとめます。
 
 ### 🎬 Veo 動画生成 (`veo`)
 
@@ -248,45 +242,6 @@ fmt.Println("推定トークン数:", total)
 
 ---
 
-## 🎵 Lyria Workflow
-
-`lyria` パッケージは、歌詞生成・作曲レシピ生成・Lyria 音声生成の 3 段を提供します。利用側で `TextPromptGenerator` と `AudioPromptBuilder` を実装し、プロダクト固有のプロンプト設計を差し込めます。
-
-```go
-workflow, err := lyria.New(
-	client,
-	promptGenerator,
-	audioPromptBuilder,
-	lyria.WithGeminiModel("gemini-3.6-flash"),
-	lyria.WithLyriaModel("lyria-3-pro-preview"),
-)
-if err != nil {
-	return err
-}
-
-ai := lyria.AIModels{}
-input := &lyria.CollectedContent{Prompt: "夜の東京を走るシンセポップ"}
-
-lyrics, err := workflow.GenerateLyrics(ctx, ai, input)
-if err != nil {
-	return err
-}
-recipe, err := workflow.Compose(ctx, ai, lyrics)
-if err != nil {
-	return err
-}
-wavBytes, err := workflow.GenerateAudio(ctx, recipe, input.Images)
-if err != nil {
-	return err
-}
-```
-
-3 段を 1 つにまとめた `Run` は提供していません。段の間に品質ゲートを挟む（生成されたレシピが想定の構成になっているか検証し、駄目ならシードをずらして作り直す、音声を測定して基準を満たすか見る）のは利用側ごとに異なる判断で、まとめた入口を用意しても結局は分解して呼ぶことになるためです。呼ぶ順序は上記のとおり固定です。
-
-`WithRateInterval` は音声生成（Lyria 呼び出し）、`WithTextRateInterval` は歌詞・レシピ生成（Gemini 呼び出し）のレート制限間隔をそれぞれ設定します。いずれも未設定（ゼロ値）の場合はレート制限を行いません。
-
----
-
 ## 🎬 Veo 動画生成 (`veo`)
 
 `veo` パッケージは Veo による動画生成を扱います。動画生成は長時間実行オペレーションで、投函してから完了までポーリングし続ける必要があります。**「1往復ずつ」を `gemini` が、「どう待つか」を `veo` が持ちます。**
@@ -480,7 +435,7 @@ if err := json.Unmarshal([]byte(jsonStr), &out); err != nil {
 | パッケージ | 役割 |
 | --- | --- |
 | `github.com/shouni/go-gemini-client/gemini` | Gemini / Vertex AI クライアント、リトライ、File API、レスポンス抽出。 |
-| `github.com/shouni/go-gemini-client/lyria` | 歌詞生成、作曲レシピ生成、Lyria 音声生成の統合アダプタ。`lyria.New` は `gemini.MultimodalGenerator` を受け取ります。 |
+| `github.com/shouni/go-gemini-client/lyria` | 歌詞生成 → 作曲レシピ生成 → Lyria 音声生成の 3 段。`lyria.New` は `gemini.MultimodalGenerator` を受け取ります。段の間に品質ゲートを挟むのは利用側の判断のため、一括実行の入口は用意していません。 |
 | `github.com/shouni/go-gemini-client/veo` | Veo 動画生成の投函と完了待ち。`veo.New` は `gemini.VideoBackend` を受け取ります。 |
 
 ---
