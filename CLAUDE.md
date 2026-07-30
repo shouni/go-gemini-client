@@ -8,7 +8,7 @@ Go library wrapping the official `google.golang.org/genai` SDK for Gemini API / 
 
 - `gemini/` — retrying client (text/multimodal generation, File API upload with Active-state polling, response extraction into `Response{Text, Images, Audios, Attachments}`, and the one-round-trip Veo video surface `StartVideo`/`PollVideo`)
 - `lyria/` — lyrics → recipe → audio music generation using `gemini.MultimodalGenerator`, exposed as three independently callable steps
-- `veo/` — Veo video generation: submits the long-running operation and owns *how to wait* for it, using an injected `gemini.VideoBackend`
+- `veo/` — Veo video generation: submits the long-running operation and owns *how to wait* for it, using an injected `gemini.VideoGenerator`
 
 **This module is the only place in the workspace that imports `google.golang.org/genai`.** Downstream repos depend on it precisely so the SDK stays confined here; adding a direct genai call anywhere else defeats that. When a Google AI API is not yet wrapped, add it here rather than hand-rolling REST in the app.
 
@@ -48,7 +48,7 @@ Tests requiring GCP Application Default Credentials (Vertex AI client constructi
 
 - **The split between `gemini` and `veo` is "one round trip" vs "how to wait".** `gemini.StartVideo`/`PollVideo` own the genai client and do exactly one call each; `veo.Client` owns the polling interval, the overall timeout, and how many consecutive poll failures to absorb. Video generation is the only long-running-operation API here, so this is the only place that distinction exists.
 - **`PollVideo` deliberately does *not* go through `runWithRetry`, while `StartVideo` does.** Polling is already a retry loop; nesting `retry`'s backoff (default 30s initial / 120s max) inside it makes a single poll take tens of seconds and silently invalidates the caller's interval and timeout. Submission is the opposite case — a 429 there loses a whole video, so it must be retried. Don't "fix" the asymmetry.
-- `veo` never imports genai. Its `Request`/`Reference`/`Media` are aliases of `gemini.VideoRequest`/`VideoReference`/`Attachment`, so there is no parallel type set to keep in sync, and `gemini.VideoBackend` is two methods — tests use a fake with no SDK and no GCP credentials.
+- `veo` never imports genai. Its `Request`/`Reference`/`Media` are aliases of `gemini.VideoRequest`/`VideoReference`/`Attachment`, so there is no parallel type set to keep in sync, and `gemini.VideoGenerator` is two methods — tests use a fake with no SDK and no GCP credentials.
 - **Input combinations are validated before sending** in `VideoRequest.buildSource`: Veo cannot combine `video` with `image`/`referenceImages`, and `lastFrame` is only valid alongside `image`. These are API-level facts, not policy — the *choice* of which mode to use belongs to the caller (`go-veo-orchestrator/ports.ClassifyVeoRequest` is where that decision lives for the MV pipeline).
 - **`Request.ExtraBody` is the escape hatch for preview features** the SDK has not modeled yet (it maps to `genai.HTTPOptions.ExtraBody`). It exists so that a missing SDK field never justifies dropping back to hand-rolled REST. Nothing about it is type-checked, so anything the SDK *does* model must use the real field.
 - Operation-level failure is reported on `VideoOperation.Failure` (wrapping `ErrVideoGenerationFailed`), not as the method's error: fetching the operation succeeded, so a transport error would misclassify it. genai exposes the failure as an untyped `map[string]any` (google.rpc.Status), so `videoOperationFailure` picks out code/status/message.

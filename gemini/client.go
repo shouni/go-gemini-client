@@ -23,7 +23,7 @@ var (
 	_ MultimodalModel     = (*Client)(nil)
 	_ StreamGenerator     = (*Client)(nil)
 	_ TokenCounter        = (*Client)(nil)
-	_ VideoBackend        = (*Client)(nil)
+	_ VideoGenerator      = (*Client)(nil)
 )
 
 // Client は Gemini SDK をラップしたメイン構造体です。

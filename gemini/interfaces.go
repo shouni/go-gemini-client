@@ -37,13 +37,13 @@ type MultimodalGenerator interface {
 	GenerateWithAttachments(ctx context.Context, modelName string, prompt string, attachments []Attachment, opts GenerateOptions) (*Response, error)
 }
 
-// VideoBackend は、動画生成の長時間実行オペレーションを開始し進捗を確認する、
+// VideoGenerator は、動画生成の長時間実行オペレーションを開始し進捗を確認する、
 // 最小のインターフェースです。
 //
 // 完了までの待ち方（ポーリング間隔・タイムアウト・一時エラーの許容回数）は含めて
 // いません。それはこの2つを呼ぶループ側の方針であり、実装を差し替える理由にならない
 // ためです。veo パッケージがこのインターフェースを受け取ってループを組みます。
-type VideoBackend interface {
+type VideoGenerator interface {
 	StartVideo(ctx context.Context, modelName string, req VideoRequest) (*VideoOperation, error)
 	PollVideo(ctx context.Context, operationName string) (*VideoOperation, error)
 }

@@ -14,8 +14,8 @@ import (
 // 入力・結果に関するセンチネルエラーです。呼び出し側は errors.Is で判定し、
 // 通信エラーとは異なる制御（プロンプトの見直しなど）を選べます。
 var (
-	// ErrBackendRequired は、New に nil のバックエンドが渡された場合に返されます。
-	ErrBackendRequired = errors.New("veo: video backend is required")
+	// ErrGeneratorRequired は、New に nil の生成クライアントが渡された場合に返されます。
+	ErrGeneratorRequired = errors.New("veo: video generator is required")
 
 	// ErrMissingOperationName は、完了待ちに必要なオペレーション名が無い場合に
 	// 返されます。未完了のオペレーションは必ず名前を持つため、通常は起こりません。
@@ -33,24 +33,24 @@ var (
 
 // Client は動画生成の投函から完了待ちまでを扱うクライアントです。
 type Client struct {
-	backend       gemini.VideoBackend
+	generator     gemini.VideoGenerator
 	pollInterval  time.Duration
 	pollTimeout   time.Duration
 	maxPollErrors int
 }
 
-// New は、動画生成バックエンドを注入して Client を初期化します。
+// New は、動画生成クライアントを注入して Client を初期化します。
 //
-// backend には *gemini.Client をそのまま渡せます。
+// generator には *gemini.Client をそのまま渡せます。
 //
 //	gc, err := gemini.NewClient(ctx, cfg)
 //	vc, err := veo.New(gc, veo.WithPollInterval(10*time.Second))
-func New(backend gemini.VideoBackend, opts ...Option) (*Client, error) {
-	if backend == nil {
-		return nil, ErrBackendRequired
+func New(generator gemini.VideoGenerator, opts ...Option) (*Client, error) {
+	if generator == nil {
+		return nil, ErrGeneratorRequired
 	}
 	c := &Client{
-		backend:       backend,
+		generator:     generator,
 		pollInterval:  DefaultPollInterval,
 		pollTimeout:   DefaultPollTimeout,
 		maxPollErrors: DefaultMaxPollErrors,
@@ -67,7 +67,7 @@ func New(backend gemini.VideoBackend, opts ...Option) (*Client, error) {
 // gemini.ErrVideoGenerationFailed を含むエラーになります。完了を待てなかった場合は
 // ポーリングの打ち切り理由（タイムアウトまたは ErrPollFailed）を返します。
 func (c *Client) Generate(ctx context.Context, modelName string, req Request) (*Result, error) {
-	op, err := c.backend.StartVideo(ctx, modelName, req)
+	op, err := c.generator.StartVideo(ctx, modelName, req)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +113,7 @@ func (c *Client) Wait(ctx context.Context, operationName string) (*Result, error
 		case <-ticker.C:
 		}
 
-		op, err := c.backend.PollVideo(waitCtx, operationName)
+		op, err := c.generator.PollVideo(waitCtx, operationName)
 		if err != nil {
 			// 待ち時間の上限に達したことによる失敗は「一時的な失敗」ではないので
 			// 回数に数えず、次のループで打ち切り理由をそのまま返す。

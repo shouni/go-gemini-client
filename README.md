@@ -44,7 +44,7 @@
 
 - **長時間実行オペレーションの完走**: 投函から完了までのポーリング、タイムアウト、一時的な失敗の許容をまとめて扱います。
 - **入力の事前検証**: Veo が併用できない入力（video と image など）を送信前に弾きます。
-- **genai 非依存**: `gemini.VideoBackend` の 2 メソッドを注入するだけなので、テストは SDK も認証も不要です。
+- **genai 非依存**: `gemini.VideoGenerator` の 2 メソッドを注入するだけなので、テストは SDK も認証も不要です。
 
 ---
 
@@ -273,7 +273,7 @@ if err != nil {
 video, _ := result.First() // video.URI に生成された動画の GCS URI が入ります
 ```
 
-`veo.New` は `gemini.VideoBackend`（`StartVideo` / `PollVideo` の 2 メソッド）を受け取るだけなので、テストでは genai SDK も GCP 認証も無しでポーリング挙動を検証できます。
+`veo.New` は `gemini.VideoGenerator`（`StartVideo` / `PollVideo` の 2 メソッド）を受け取るだけなので、テストでは genai SDK も GCP 認証も無しでポーリング挙動を検証できます。
 
 ### 入力の組み合わせ
 
@@ -420,7 +420,7 @@ if err := json.Unmarshal([]byte(jsonStr), &out); err != nil {
 | `BackendInspector` | `IsVertexAI` | 含まない |
 | `FileManager` | `UploadFile` / `DeleteFile` | 含まない |
 | `MultimodalModel` | 上記 3 つ（生成・ファイル管理・バックエンド判定）の集合 | 含まない |
-| `VideoBackend` | `StartVideo` / `PollVideo` | 含まない |
+| `VideoGenerator` | `StartVideo` / `PollVideo` | 含まない |
 | `Generator` | `GenerateWithParts` + `IsVertexAI` | **含む** |
 | `GenerativeModel` | `Generator` + `FileManager` | **含む** |
 | `StreamGenerator` | `GenerateContentStream` / `GenerateWithPartsStream` | **含む** |
@@ -436,7 +436,7 @@ if err := json.Unmarshal([]byte(jsonStr), &out); err != nil {
 | --- | --- |
 | `github.com/shouni/go-gemini-client/gemini` | Gemini / Vertex AI クライアント、リトライ、File API、レスポンス抽出。 |
 | `github.com/shouni/go-gemini-client/lyria` | 歌詞生成 → 作曲レシピ生成 → Lyria 音声生成の 3 段。`lyria.New` は `gemini.MultimodalGenerator` を受け取ります。段の間に品質ゲートを挟むのは利用側の判断のため、一括実行の入口は用意していません。 |
-| `github.com/shouni/go-gemini-client/veo` | Veo 動画生成の投函と完了待ち。`veo.New` は `gemini.VideoBackend` を受け取ります。 |
+| `github.com/shouni/go-gemini-client/veo` | Veo 動画生成の投函と完了待ち。`veo.New` は `gemini.VideoGenerator` を受け取ります。 |
 
 ---
 
