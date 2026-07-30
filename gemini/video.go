@@ -76,7 +76,20 @@ type VideoRequest struct {
 	// SDK がまだ型として持っていないプレビュー機能を使うための逃げ道で、構造は
 	// バックエンドの REST API に一致させる必要があります。SDK が対応している項目は
 	// 上のフィールドを使ってください（ExtraBody は型検査も検証も効きません）。
+	//
+	// マージはマップ同士のときだけ再帰します。同じキーの値が配列の場合は再帰せず
+	// 丸ごと置き換わるため、Vertex AI のリクエストで instances のような配列へ値を
+	// 足す用途には使えません（prompt や画像入力ごと消えます）。配列の要素へ差し込む
+	// 場合は ModifyRequestBody を使ってください。
 	ExtraBody map[string]any
+
+	// ModifyRequestBody は、組み立て済みのリクエストボディを送信直前に書き換えます。
+	// ExtraBody のマージが済んだ後に、ボディ全体を受け取って呼ばれます。
+	//
+	// ExtraBody では届かない位置（配列の要素の中など）へ値を差し込むための手段です。
+	// ボディの構造はバックエンドの REST API そのもので、型検査も検証も効きません。
+	// 受け取ったマップを直接書き換えて返して構いません。
+	ModifyRequestBody func(body map[string]any) map[string]any
 }
 
 // VideoOperation は動画生成の長時間実行オペレーションの状態です。
@@ -227,8 +240,11 @@ func (r VideoRequest) buildConfig() (*genai.GenerateVideosConfig, error) {
 			ReferenceType: reference.Type,
 		})
 	}
-	if len(r.ExtraBody) > 0 {
-		config.HTTPOptions = &genai.HTTPOptions{ExtraBody: r.ExtraBody}
+	if len(r.ExtraBody) > 0 || r.ModifyRequestBody != nil {
+		config.HTTPOptions = &genai.HTTPOptions{
+			ExtraBody:             r.ExtraBody,
+			ExtrasRequestProvider: r.ModifyRequestBody,
+		}
 	}
 	return config, nil
 }

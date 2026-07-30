@@ -148,19 +148,52 @@ func TestStartVideoBuildsVideoExtension(t *testing.T) {
 
 // TestStartVideoPassesExtraBody は、SDK が型として持たないフィールドを ExtraBody で
 // 送れることを検証します。プレビュー機能のために生 REST へ戻らずに済む逃げ道です。
+//
+// ここで parameters 配下（マップ）を例にしているのは意図的です。ExtraBody のマージは
+// マップ同士のときだけ再帰し、instances のような配列は丸ごと置き換わってしまうため、
+// 配列へ差し込む用途には ModifyRequestBody を使います。
 func TestStartVideoPassesExtraBody(t *testing.T) {
 	video := &fakeVideoClient{}
 	client := newVideoTestClient(video)
 
 	_, err := client.StartVideo(context.Background(), "veo-3.1-generate-001", VideoRequest{
 		Prompt:    "a cat",
-		ExtraBody: map[string]any{"instances": []any{map[string]any{"audio": map[string]any{"gcsUri": "gs://bucket/bgm.mp3"}}}},
+		ExtraBody: map[string]any{"parameters": map[string]any{"somePreviewFlag": true}},
 	})
 	if err != nil {
 		t.Fatalf("StartVideo() error = %v", err)
 	}
-	if video.gotConfig.HTTPOptions == nil || video.gotConfig.HTTPOptions.ExtraBody == nil {
-		t.Fatalf("httpOptions = %+v, want ExtraBody to be forwarded", video.gotConfig.HTTPOptions)
+	opts := video.gotConfig.HTTPOptions
+	if opts == nil || opts.ExtraBody == nil {
+		t.Fatalf("httpOptions = %+v, want ExtraBody to be forwarded", opts)
+	}
+}
+
+// TestStartVideoPassesModifyRequestBody は、組み立て済みボディを書き換えるフックが
+// SDK へ渡ることを検証します。ExtraBody では届かない配列要素の中（Vertex AI の
+// instances[0] など）へ値を足すための手段です。
+func TestStartVideoPassesModifyRequestBody(t *testing.T) {
+	video := &fakeVideoClient{}
+	client := newVideoTestClient(video)
+
+	_, err := client.StartVideo(context.Background(), "veo-3.1-generate-001", VideoRequest{
+		Prompt: "a cat",
+		ModifyRequestBody: func(body map[string]any) map[string]any {
+			body["touched"] = true
+			return body
+		},
+	})
+	if err != nil {
+		t.Fatalf("StartVideo() error = %v", err)
+	}
+	opts := video.gotConfig.HTTPOptions
+	if opts == nil || opts.ExtrasRequestProvider == nil {
+		t.Fatalf("httpOptions = %+v, want ExtrasRequestProvider to be forwarded", opts)
+	}
+	// SDK は組み立て済みボディを渡してくるので、そのまま書き換えて返せる。
+	got := opts.ExtrasRequestProvider(map[string]any{"instances": []any{map[string]any{}}})
+	if got["touched"] != true {
+		t.Errorf("modified body = %+v, want the hook applied", got)
 	}
 }
 

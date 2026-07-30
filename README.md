@@ -296,9 +296,28 @@ Veo は入力系統を併用できません。`StartVideo` は API が確実に�
 
 ### SDK 未対応フィールドの送信
 
-SDK がまだ型として持たないプレビュー機能は `Request.ExtraBody` でリクエストボディへ直接差し込めます。構造はバックエンドの REST API に一致させる必要があり、型検査も検証も効きません。SDK が対応している項目は通常のフィールドを使ってください。
+SDK がまだ型として持たないプレビュー機能は、2 つの方法でリクエストボディへ差し込めます。いずれも構造はバックエンドの REST API に一致させる必要があり、型検査も検証も効きません。SDK が対応している項目は通常のフィールドを使ってください。
 
-これが効くのは「SDK が既に叩いているエンドポイントに、未対応のフィールドを足す」場合だけです。エンドポイント自体が SDK に無い場合（genai v1.66.0 時点の Interactions API など）は救えません。
+| フィールド | 用途 |
+| --- | --- |
+| `Request.ExtraBody` | ボディへマージする値。**マージが再帰するのはマップ同士のときだけ**で、同じキーの値が配列なら丸ごと置き換わります |
+| `Request.ModifyRequestBody` | 組み立て済みボディを受け取って書き換える関数。`ExtraBody` のマージ後に呼ばれます |
+
+Vertex AI のリクエストは `{"instances": [...], "parameters": {...}}` という形なので、`instances` の要素へ値を足したい場合に `ExtraBody` を使うと **`instances` 配列ごと置き換わり、prompt も画像入力も消えます**。その用途では `ModifyRequestBody` を使ってください。
+
+```go
+req.ModifyRequestBody = func(body map[string]any) map[string]any {
+	instances, _ := body["instances"].([]any)
+	if len(instances) > 0 {
+		if instance, ok := instances[0].(map[string]any); ok {
+			instance["audio"] = map[string]any{"gcsUri": "gs://bucket/bgm.mp3"}
+		}
+	}
+	return body
+}
+```
+
+どちらも効くのは「SDK が既に叩いているエンドポイントのボディをいじる」場合だけです。エンドポイント自体が SDK に無い場合（genai v1.66.0 時点の Interactions API など）は救えません。
 
 ---
 
