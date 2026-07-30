@@ -19,7 +19,17 @@ var (
 	ErrInvalidPart = errors.New("生成パーツに nil を含めることはできません")
 	// ErrInvalidSeed は、Seed が int32 の範囲外の場合に返されます。
 	ErrInvalidSeed = errors.New("seed は int32 の範囲内である必要があります")
+	// ErrEmptyOperationName は、オペレーション名が空の場合に返されます。
+	ErrEmptyOperationName = errors.New("オペレーション名を空にすることはできません")
+	// ErrInvalidVideoInput は、動画生成の入力の組み合わせが API の受け付けない
+	// ものだった場合に返されます（Image と Video の併用など）。
+	ErrInvalidVideoInput = errors.New("動画生成の入力の組み合わせが不正です")
 )
+
+// ErrVideoGenerationFailed は、動画生成のオペレーションが失敗として完了したことを
+// 示します。オペレーションの取得自体は成功しているため、通信エラーとは区別されます。
+// VideoOperation.Failure に載る形で返されます。
+var ErrVideoGenerationFailed = errors.New("gemini: video generation failed")
 
 // API との通信は成功したが、レスポンス内容が利用できない場合のセンチネルエラー。
 // いずれもリトライでは解決しないため shouldRetry は false を返します。

@@ -23,12 +23,14 @@ var (
 	_ MultimodalModel     = (*Client)(nil)
 	_ StreamGenerator     = (*Client)(nil)
 	_ TokenCounter        = (*Client)(nil)
+	_ VideoBackend        = (*Client)(nil)
 )
 
 // Client は Gemini SDK をラップしたメイン構造体です。
 type Client struct {
 	modelClient         modelClient
 	fileClient          fileClient
+	videoClient         videoClient
 	backend             genai.Backend
 	retryOpts           []retry.Option
 	filePollingInterval time.Duration
@@ -59,6 +61,7 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 	return &Client{
 		modelClient:         genAIModelClient{models: client.Models},
 		fileClient:          genAIFileClient{files: client.Files},
+		videoClient:         genAIVideoClient{models: client.Models, operations: client.Operations},
 		backend:             clientCfg.Backend,
 		retryOpts:           cfg.buildRetryOptions(),
 		filePollingInterval: cfg.getFilePollingInterval(),
