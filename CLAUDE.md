@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Go library wrapping the official `google.golang.org/genai` SDK for Gemini API / Vertex AI, plus generation workflows built on top of it. Three packages, no main:
 
 - `gemini/` — retrying client (text/multimodal generation, File API upload with Active-state polling, response extraction into `Response{Text, Images, Audios, Attachments}`, and the one-round-trip Veo video surface `StartVideo`/`PollVideo`)
-- `lyria/` — lyrics → recipe → audio music-generation workflow facade using `gemini.MultimodalGenerator`
+- `lyria/` — lyrics → recipe → audio music generation using `gemini.MultimodalGenerator`, exposed as three independently callable steps
 - `veo/` — Veo video generation: submits the long-running operation and owns *how to wait* for it, using an injected `gemini.VideoBackend`
 
 **This module is the only place in the workspace that imports `google.golang.org/genai`.** Downstream repos depend on it precisely so the SDK stays confined here; adding a direct genai call anywhere else defeats that. When a Google AI API is not yet wrapped, add it here rather than hand-rolling REST in the app.
@@ -56,6 +56,8 @@ Tests requiring GCP Application Default Credentials (Vertex AI client constructi
 ### lyria package
 
 - `Workflow` is a facade over three roles: `Lyricist`/`Composer` (both implemented by `lyriaTextGenerator`) and `AudioGenerator` (`lyriaAudioGenerator`). Prompt construction is injected by the caller via `TextPromptGenerator` and `AudioPromptBuilder` — this library contains no prompt text.
+- **There is deliberately no all-in-one `Run`.** One existed and no caller used it: ap-comp calls the three steps itself so it can gate between them (verify the composed recipe against the compose mode's declared structure and recompose with a shifted seed on failure, then measure and optionally review the audio). Those gates are per-product, so a bundled entry point only gets decomposed again at the call site. If a caller wants the straight-line sequence, it is `GenerateLyrics` → `Compose` → `GenerateAudio` in that order.
+- `Compose` attaches `AIModels` and `Seed` to the recipe *after* generation — the recipe schema omits them on purpose so the model never invents them. `TestComposeAttachesModelsAndSeed` guards this; without it a seeded, reproducible run silently stops being reproducible.
 - Text generation (lyrics and recipe) shares one generic pipeline: `generateJSON[T]` in `text.go` (singleflight → Gemini call with JSON MIME type + `ResponseSchema` from `schemas.go` → `cleanJSONResponse` → unmarshal). The recipe schema deliberately omits `lyrics`/model fields — code attaches those after generation.
 - **Singleflight + clone pattern**: identical concurrent requests are deduplicated via `doSingleflight` (`singleflight.go`), which detaches from the caller's context (`context.WithoutCancel` + a per-run `execTimeout`, settable via `WithExecTimeout`, default 5m). Because results are shared across callers, every public method must return a **clone** (`cloneLyricsDraft`, `cloneMusicRecipe`, `cloneBytes`) and must not write caller-specific data into the shared result.
 - Per-call model/mode/seed selection comes from the `AIModels` argument, falling back to the models set via `New(...)` options.

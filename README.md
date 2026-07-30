@@ -42,7 +42,7 @@
 
 ### 🎼 Lyria ワークフロー (`lyria`)
 
-- **作詞から音声生成までの統合**: 歌詞生成、作曲レシピ生成、Lyria 音声生成を `Workflow` で一括実行できます。
+- **3 段の役割分担**: 歌詞生成 (`Lyricist`)、作曲レシピ生成 (`Composer`)、Lyria 音声生成 (`AudioGenerator`) をそれぞれ独立して呼べます。段の間に品質ゲートを挟むのは利用側の判断です。
 - **構造化出力**: 歌詞・レシピ生成は `ResponseSchema` による constrained decoding を使い、JSON 以外のノイズ混入を防ぎます。
 - **重複呼び出し抑制**: singleflight により、同一条件の音声生成リクエストをまとめます。
 
@@ -250,7 +250,7 @@ fmt.Println("推定トークン数:", total)
 
 ## 🎵 Lyria Workflow
 
-`lyria` パッケージは、歌詞生成・作曲レシピ生成・Lyria 音声生成を束ねるファサードです。利用側で `TextPromptGenerator` と `AudioPromptBuilder` を実装し、プロダクト固有のプロンプト設計を差し込めます。
+`lyria` パッケージは、歌詞生成・作曲レシピ生成・Lyria 音声生成の 3 段を提供します。利用側で `TextPromptGenerator` と `AudioPromptBuilder` を実装し、プロダクト固有のプロンプト設計を差し込めます。
 
 ```go
 workflow, err := lyria.New(
@@ -264,10 +264,24 @@ if err != nil {
 	return err
 }
 
-recipe, wavBytes, err := workflow.Run(ctx, lyria.AIModels{}, &lyria.CollectedContent{
-	Prompt: "夜の東京を走るシンセポップ",
-})
+ai := lyria.AIModels{}
+input := &lyria.CollectedContent{Prompt: "夜の東京を走るシンセポップ"}
+
+lyrics, err := workflow.GenerateLyrics(ctx, ai, input)
+if err != nil {
+	return err
+}
+recipe, err := workflow.Compose(ctx, ai, lyrics)
+if err != nil {
+	return err
+}
+wavBytes, err := workflow.GenerateAudio(ctx, recipe, input.Images)
+if err != nil {
+	return err
+}
 ```
+
+3 段を 1 つにまとめた `Run` は提供していません。段の間に品質ゲートを挟む（生成されたレシピが想定の構成になっているか検証し、駄目ならシードをずらして作り直す、音声を測定して基準を満たすか見る）のは利用側ごとに異なる判断で、まとめた入口を用意しても結局は分解して呼ぶことになるためです。呼ぶ順序は上記のとおり固定です。
 
 `WithRateInterval` は音声生成（Lyria 呼び出し）、`WithTextRateInterval` は歌詞・レシピ生成（Gemini 呼び出し）のレート制限間隔をそれぞれ設定します。いずれも未設定（ゼロ値）の場合はレート制限を行いません。
 
