@@ -4,10 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-Go library wrapping the official `google.golang.org/genai` SDK for Gemini API / Vertex AI, plus a music-generation workflow built on top of it. Two packages, no main:
+Go library wrapping the official `google.golang.org/genai` SDK for Gemini API / Vertex AI, plus generation workflows built on top of it. Three packages, no main:
 
-- `gemini/` — retrying client (text/multimodal generation, File API upload with Active-state polling, response extraction into `Response{Text, Images, Audios, Attachments}`)
-- `lyria/` — lyrics → recipe → audio music-generation workflow facade using `gemini.MultimodalGenerator`
+- `gemini/` — retrying client (text/multimodal generation, File API upload with Active-state polling, response extraction into `Response{Text, Images, Audios, Attachments}`, and the one-round-trip Veo video surface `StartVideo`/`PollVideo`)
+- `lyria/` — lyrics → recipe → audio music generation using `gemini.MultimodalGenerator`, exposed as three independently callable steps
+- `veo/` — Veo video generation: submits the long-running operation and owns *how to wait* for it, using an injected `gemini.VideoGenerator`
+
+**This module is the only place in the workspace that imports `google.golang.org/genai`.** Downstream repos depend on it precisely so the SDK stays confined here; adding a direct genai call anywhere else defeats that. When a Google AI API is not yet wrapped, add it here rather than hand-rolling REST in the app.
 
 ## Commands
 
@@ -41,9 +44,20 @@ Tests requiring GCP Application Default Credentials (Vertex AI client constructi
 - **Neither of those is deprecated**, despite appearances: the SDK's `GenerationConfig` (the batch/tuning payload type produced by `ToGenerationConfig`) marks its `ResponseSchema`/`ResponseMIMEType` `Deprecated: Use response_format instead`, but `GenerateContentConfig` — the type this package actually sends — has zero deprecation markers. Don't "fix" our usage based on the wrong struct.
 - `Config.HTTPClient` is passed to `genai.ClientConfig`, so a netarmor `securenet.NewSafeHTTPClient` can be injected.
 
+### veo package
+
+- **The split between `gemini` and `veo` is "one round trip" vs "how to wait".** `gemini.StartVideo`/`PollVideo` own the genai client and do exactly one call each; `veo.Client` owns the polling interval, the overall timeout, and how many consecutive poll failures to absorb. Video generation is the only long-running-operation API here, so this is the only place that distinction exists.
+- **`PollVideo` deliberately does *not* go through `runWithRetry`, while `StartVideo` does.** Polling is already a retry loop; nesting `retry`'s backoff (default 30s initial / 120s max) inside it makes a single poll take tens of seconds and silently invalidates the caller's interval and timeout. Submission is the opposite case — a 429 there loses a whole video, so it must be retried. Don't "fix" the asymmetry.
+- `veo` never imports genai. Its `Request`/`Reference`/`Media` are aliases of `gemini.VideoRequest`/`VideoReference`/`Attachment`, so there is no parallel type set to keep in sync, and `gemini.VideoGenerator` is two methods — tests use a fake with no SDK and no GCP credentials.
+- **Input combinations are validated before sending** in `VideoRequest.buildSource`: Veo cannot combine `video` with `image`/`referenceImages`, and `lastFrame` is only valid alongside `image`. These are API-level facts, not policy — the *choice* of which mode to use belongs to the caller (`go-veo-orchestrator/ports.ClassifyVeoRequest` is where that decision lives for the MV pipeline).
+- **`Request.ExtraBody` is the escape hatch for preview features** the SDK has not modeled yet (it maps to `genai.HTTPOptions.ExtraBody`). It exists so that a missing SDK field never justifies dropping back to hand-rolled REST. Nothing about it is type-checked, so anything the SDK *does* model must use the real field.
+- Operation-level failure is reported on `VideoOperation.Failure` (wrapping `ErrVideoGenerationFailed`), not as the method's error: fetching the operation succeeded, so a transport error would misclassify it. genai exposes the failure as an untyped `map[string]any` (google.rpc.Status), so `videoOperationFailure` picks out code/status/message.
+
 ### lyria package
 
 - `Workflow` is a facade over three roles: `Lyricist`/`Composer` (both implemented by `lyriaTextGenerator`) and `AudioGenerator` (`lyriaAudioGenerator`). Prompt construction is injected by the caller via `TextPromptGenerator` and `AudioPromptBuilder` — this library contains no prompt text.
+- **There is deliberately no all-in-one `Run`.** One existed and no caller used it: ap-comp calls the three steps itself so it can gate between them (verify the composed recipe against the compose mode's declared structure and recompose with a shifted seed on failure, then measure and optionally review the audio). Those gates are per-product, so a bundled entry point only gets decomposed again at the call site. If a caller wants the straight-line sequence, it is `GenerateLyrics` → `Compose` → `GenerateAudio` in that order.
+- `Compose` attaches `AIModels` and `Seed` to the recipe *after* generation — the recipe schema omits them on purpose so the model never invents them. `TestComposeAttachesModelsAndSeed` guards this; without it a seeded, reproducible run silently stops being reproducible.
 - Text generation (lyrics and recipe) shares one generic pipeline: `generateJSON[T]` in `text.go` (singleflight → Gemini call with JSON MIME type + `ResponseSchema` from `schemas.go` → `cleanJSONResponse` → unmarshal). The recipe schema deliberately omits `lyrics`/model fields — code attaches those after generation.
 - **Singleflight + clone pattern**: identical concurrent requests are deduplicated via `doSingleflight` (`singleflight.go`), which detaches from the caller's context (`context.WithoutCancel` + a per-run `execTimeout`, settable via `WithExecTimeout`, default 5m). Because results are shared across callers, every public method must return a **clone** (`cloneLyricsDraft`, `cloneMusicRecipe`, `cloneBytes`) and must not write caller-specific data into the shared result.
 - Per-call model/mode/seed selection comes from the `AIModels` argument, falling back to the models set via `New(...)` options.

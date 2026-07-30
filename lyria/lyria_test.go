@@ -114,82 +114,51 @@ func (m *MockPromptGen) GenerateCoverArt(mode string, recipe *MusicRecipe) (stri
 
 // --- Tests ---
 
-func TestWorkflow_Run(t *testing.T) {
+// TestComposeAttachesModelsAndSeed は、生成されたレシピに呼び出し時の AIModels と
+// Seed が付与されることを検証します。レシピの JSON Schema はこれらを意図的に含めて
+// おらず（AI に生成させない）、生成後にコードが付けています。ここが抜けると、Seed を
+// 指定した再現生成がエラーも警告も無しに効かなくなります。
+func TestComposeAttachesModelsAndSeed(t *testing.T) {
 	ctx := context.Background()
 	mAI := new(MockGeminiClient)
 	mPrompt := new(MockPromptGen)
-	textGenerator := &lyriaTextGenerator{
-		aiClient:     mAI,
-		promptGen:    mPrompt,
-		defaultModel: "gemini-flash",
-	}
 
-	// テスト対象のワークフローを構築
 	workflow := &Workflow{
-		lyricist: textGenerator,
-		composer: textGenerator,
-		audio: &lyriaAudioGenerator{
-			aiClient:          mAI,
-			defaultLyriaModel: "lyria-3",
-			limiter:           rate.NewLimiter(rate.Inf, 0),
-			promptBuilder:     fixedAudioPromptBuilder{fullSong: "full prompt"},
-			converter:         noopPhoneticConverter{},
+		composer: &lyriaTextGenerator{
+			aiClient:     mAI,
+			promptGen:    mPrompt,
+			defaultModel: "gemini-flash",
 		},
 	}
 
 	ai := AIModels{
 		TextModel:   "custom-text-model",
 		AudioModel:  "lyria-custom-v1",
-		LyricsMode:  "outro",
 		ComposeMode: "jazz",
 		Seed:        new(int64),
 	}
 	*ai.Seed = 42
-	contextText := "雨のアムステルダム"
-	input := &CollectedContent{
-		Prompt: contextText,
-	}
+	lyrics := &LyricsDraft{Title: "Rainy Amsterdam", Lyrics: "Canals reflect the neon lights..."}
 
-	// 期待される中間データ
-	expectedLyrics := &LyricsDraft{
-		Title:  "Rainy Amsterdam",
-		Theme:  "Neon reflection on canals",
-		Lyrics: "Canals reflect the neon lights...",
-	}
-
-	lyricsJSON := `{"title": "Rainy Amsterdam", "theme": "Neon reflection on canals", "lyrics": "Canals reflect the neon lights..."}`
-	recipeJSON := `{"title": "Rainy Amsterdam", "tempo": 85, "mood": "melancholic"}`
-	fakeWav := []byte("RIFF....WAVEfmt....data")
-
-	// 1. 作詞プロンプト生成
-	mPrompt.On("GenerateLyrics", "outro", contextText).Return("prompt-lyrics-text", nil)
-	mAI.On("GenerateWithAttachments", mock.Anything, "custom-text-model", "prompt-lyrics-text", mock.Anything, jsonGenerateOptionsWithSeed(t, ai.Seed)).Return(&gemini.Response{
-		Text: "```json\n" + lyricsJSON + "\n```",
-	}, nil)
-
-	// 2. 作曲レシピ生成
-	mPrompt.On("GenerateRecipe", "jazz", expectedLyrics).Return("prompt-recipe-text", nil)
+	mPrompt.On("GenerateRecipe", "jazz", lyrics).Return("prompt-recipe-text", nil)
 	mAI.On("GenerateWithAttachments", mock.Anything, "custom-text-model", "prompt-recipe-text", mock.Anything, jsonGenerateOptionsWithSeed(t, ai.Seed)).Return(&gemini.Response{
-		Text: recipeJSON,
+		Text: `{"title": "Rainy Amsterdam", "tempo": 85, "mood": "melancholic"}`,
 	}, nil)
 
-	// 3. 音声生成実行
-	mAI.On("GenerateWithAttachments", mock.Anything, "lyria-custom-v1", mock.Anything, mock.Anything, mock.Anything).Return(&gemini.Response{
-		Audios: [][]byte{fakeWav},
-	}, nil)
+	recipe, err := workflow.Compose(ctx, ai, lyrics)
 
-	// 実行
-	recipe, wav, err := workflow.Run(ctx, ai, input)
-
-	// 検証
 	assert.NoError(t, err)
-	assert.NotNil(t, recipe)
 	assert.Equal(t, "Rainy Amsterdam", recipe.Title)
-	assert.Equal(t, 85, recipe.Tempo)
-	assert.Equal(t, fakeWav, wav)
-
+	assert.Equal(t, "custom-text-model", recipe.TextModel)
+	assert.Equal(t, "lyria-custom-v1", recipe.AudioModel)
 	if assert.NotNil(t, recipe.Seed) {
 		assert.Equal(t, int64(42), *recipe.Seed)
+	}
+	// 共有結果ではなく複製に付与していること（Seed のポインタが使い回されていない）。
+	assert.NotSame(t, ai.Seed, recipe.Seed)
+	// 歌詞も生成後に付けられる。
+	if assert.NotNil(t, recipe.Lyrics) {
+		assert.Equal(t, "Rainy Amsterdam", recipe.Lyrics.Title)
 	}
 
 	mPrompt.AssertExpectations(t)

@@ -12,7 +12,6 @@ import (
 // これらのアサーションがないと、メソッドシグネチャがドリフトしても
 // 下流の利用側がビルドされるまで気付けません。
 var (
-	_ MusicWorkflow  = (*Workflow)(nil)
 	_ Lyricist       = (*Workflow)(nil)
 	_ Composer       = (*Workflow)(nil)
 	_ AudioGenerator = (*Workflow)(nil)
@@ -72,26 +71,6 @@ func New(aiClient gemini.MultimodalGenerator, promptGen TextPromptGenerator, aud
 			defaultLyriaModel: opts.lyriaModel,
 		},
 	}, nil
-}
-
-// Run は音楽生成のコアプロセス（作詞〜音声生成）を一括で行います。
-func (w *Workflow) Run(ctx context.Context, ai AIModels, input *CollectedContent) (*MusicRecipe, []byte, error) {
-	lyrics, err := w.GenerateLyrics(ctx, ai, input)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	recipe, err := w.Compose(ctx, ai, lyrics)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	wav, err := w.GenerateAudio(ctx, recipe, input.Images)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return recipe, wav, nil
 }
 
 // GenerateLyrics builds a lyric draft from collected content.

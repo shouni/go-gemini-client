@@ -12,7 +12,7 @@
 
 **Go Gemini Client** は、[shouni/netarmor](https://github.com/shouni/netarmor) をリトライ基盤に採用した、**Google Gemini API / Vertex AI** 向けの Go ライブラリです。
 
-ひとつのクライアントで、API Key 方式の **Gemini API (Google AI Studio)** と、Google Cloud 認証を使う **Vertex AI** を切り替えて利用できます。テキスト生成だけでなく、GCS URI や File API を使ったマルチモーダル入力、画像・音声レスポンス、Lyria による音楽生成ワークフローも扱えるように設計されています。
+ひとつのクライアントで、API Key 方式の **Gemini API (Google AI Studio)** と、Google Cloud 認証を使う **Vertex AI** を切り替えて利用できます。テキスト生成だけでなく、GCS URI や File API を使ったマルチモーダル入力、画像・音声レスポンス、Lyria による音楽生成、Veo による動画生成も扱えるように設計されています。
 
 ---
 
@@ -40,11 +40,11 @@
 - **自動クリーンアップ**: Active 化に失敗した File API オブジェクトはバックグラウンドで削除を試みます。
 - **レスポンス抽出**: テキスト、生成画像、生成音声、MIME type 付きの添付 (`Attachments`)、トークン使用量 (`Usage`) を `gemini.Response` にまとめて返します。
 
-### 🎼 Lyria ワークフロー (`lyria`)
+### 🎬 Veo 動画生成 (`veo`)
 
-- **作詞から音声生成までの統合**: 歌詞生成、作曲レシピ生成、Lyria 音声生成を `Workflow` で一括実行できます。
-- **構造化出力**: 歌詞・レシピ生成は `ResponseSchema` による constrained decoding を使い、JSON 以外のノイズ混入を防ぎます。
-- **重複呼び出し抑制**: singleflight により、同一条件の音声生成リクエストをまとめます。
+- **長時間実行オペレーションの完走**: 投函から完了までのポーリング、タイムアウト、一時的な失敗の許容をまとめて扱います。
+- **入力の事前検証**: Veo が併用できない入力（video と image など）を送信前に弾きます。
+- **genai 非依存**: `gemini.VideoGenerator` の 2 メソッドを注入するだけなので、テストは SDK も認証も不要です。
 
 ---
 
@@ -242,28 +242,61 @@ fmt.Println("推定トークン数:", total)
 
 ---
 
-## 🎵 Lyria Workflow
+## 🎬 Veo 動画生成 (`veo`)
 
-`lyria` パッケージは、歌詞生成・作曲レシピ生成・Lyria 音声生成を束ねるファサードです。利用側で `TextPromptGenerator` と `AudioPromptBuilder` を実装し、プロダクト固有のプロンプト設計を差し込めます。
+`veo` パッケージは Veo による動画生成を扱います。動画生成は長時間実行オペレーションで、投函してから完了までポーリングし続ける必要があります。**「1往復ずつ」を `gemini` が、「どう待つか」を `veo` が持ちます。**
 
 ```go
-workflow, err := lyria.New(
-	client,
-	promptGenerator,
-	audioPromptBuilder,
-	lyria.WithGeminiModel("gemini-3.6-flash"),
-	lyria.WithLyriaModel("lyria-3-pro-preview"),
+client, err := gemini.NewClient(ctx, gemini.Config{ProjectID: "my-project", LocationID: "us-central1"})
+if err != nil {
+	return err
+}
+
+videoClient, err := veo.New(client,
+	veo.WithPollInterval(10*time.Second),
+	veo.WithPollTimeout(15*time.Minute),
 )
 if err != nil {
 	return err
 }
 
-recipe, wavBytes, err := workflow.Run(ctx, lyria.AIModels{}, &lyria.CollectedContent{
-	Prompt: "夜の東京を走るシンセポップ",
+result, err := videoClient.Generate(ctx, "veo-3.1-generate-001", veo.Request{
+	Prompt:       "a slow dolly-in on a coastal cliffside at dawn",
+	Image:        &veo.Media{URI: "gs://bucket/keyframe.png", MIMEType: "image/png"},
+	DurationSec:  8,
+	AspectRatio:  "16:9",
+	OutputGCSURI: "gs://bucket/videos/",
 })
+if err != nil {
+	return err
+}
+video, _ := result.First() // video.URI に生成された動画の GCS URI が入ります
 ```
 
-`WithRateInterval` は音声生成（Lyria 呼び出し）、`WithTextRateInterval` は歌詞・レシピ生成（Gemini 呼び出し）のレート制限間隔をそれぞれ設定します。いずれも未設定（ゼロ値）の場合はレート制限を行いません。
+`veo.New` は `gemini.VideoGenerator`（`StartVideo` / `PollVideo` の 2 メソッド）を受け取るだけなので、テストでは genai SDK も GCP 認証も無しでポーリング挙動を検証できます。
+
+### 入力の組み合わせ
+
+Veo は入力系統を併用できません。`StartVideo` は API が確実に拒否する組み合わせを送信前に `ErrInvalidVideoInput` で弾きます。
+
+| 使う機能 | 設定するフィールド |
+| --- | --- |
+| image-to-video | `Image` |
+| first/last frame 補間 | `Image` + `LastFrame` |
+| reference-to-video | `References`（`Image` / `Video` / `LastFrame` とは排他） |
+| video extension（継続生成） | `Video`（`Image` とは排他） |
+
+### ポーリングの持ち方
+
+`gemini.PollVideo` は **1 回の問い合わせに徹し、リトライを掛けません**。ポーリング自体が繰り返しの仕組みなので、その内部でさらにバックオフを効かせると 1 回の問い合わせに数十秒かかりうる二重の待ちになり、設定したポーリング間隔とタイムアウトが意味を失うためです。一時的な失敗を何回まで許容するかは、間隔とタイムアウトを持っている `veo.Client` の判断で、`WithMaxPollErrors`（既定 10 回）で調整します。
+
+一方、**投函（`StartVideo`）には `Config` のリトライ設定が効きます**。レート制限や一時的なサーバーエラーで 1 本分の生成が落ちるのを防ぐためです。
+
+`Generate` は投函と完了待ちをまとめて行いますが、`Wait(ctx, operationName)` を単体でも呼べます。実行時間に上限のあるジョブ基盤で、投函だけ済ませて一旦戻り、次の実行でオペレーション名を渡して待ちを再開する、といった使い方ができます。
+
+### SDK 未対応フィールドの送信
+
+SDK がまだ型として持たないプレビュー機能は `Request.ExtraBody` でリクエストボディへ直接差し込めます。構造はバックエンドの REST API に一致させる必要があり、型検査も検証も効きません。SDK が対応している項目は通常のフィールドを使ってください。
 
 ---
 
@@ -363,6 +396,16 @@ if err := json.Unmarshal([]byte(jsonStr), &out); err != nil {
 - `ErrEmptyParts`: 生成パーツが空の場合。
 - `ErrInvalidPart`: 生成パーツに nil が含まれている場合。
 - `ErrInvalidSeed`: `Seed` が `int32` の範囲外の場合。
+- `ErrEmptyOperationName`: オペレーション名が空の場合。
+- `ErrInvalidVideoInput`: 動画生成の入力の組み合わせが API の受け付けないものだった場合。
+- `ErrVideoGenerationFailed`: 動画生成のオペレーションが失敗として完了した場合（`VideoOperation.Failure` に載ります）。
+
+`veo` パッケージは以下を公開しています。
+
+- `veo.ErrBackendRequired`: `veo.New` に nil のバックエンドを渡した場合。
+- `veo.ErrMissingOperationName`: 完了待ちに必要なオペレーション名が無い場合。
+- `veo.ErrNoVideoGenerated`: 成功で完了したのに動画が 1 本も返らなかった場合（安全性ポリシーによる除外が典型）。
+- `veo.ErrPollFailed`: 生成状況の確認が連続して失敗し、完了を待てなくなった場合。
 
 ---
 
@@ -377,6 +420,7 @@ if err := json.Unmarshal([]byte(jsonStr), &out); err != nil {
 | `BackendInspector` | `IsVertexAI` | 含まない |
 | `FileManager` | `UploadFile` / `DeleteFile` | 含まない |
 | `MultimodalModel` | 上記 3 つ（生成・ファイル管理・バックエンド判定）の集合 | 含まない |
+| `VideoGenerator` | `StartVideo` / `PollVideo` | 含まない |
 | `Generator` | `GenerateWithParts` + `IsVertexAI` | **含む** |
 | `GenerativeModel` | `Generator` + `FileManager` | **含む** |
 | `StreamGenerator` | `GenerateContentStream` / `GenerateWithPartsStream` | **含む** |
@@ -391,7 +435,8 @@ if err := json.Unmarshal([]byte(jsonStr), &out); err != nil {
 | パッケージ | 役割 |
 | --- | --- |
 | `github.com/shouni/go-gemini-client/gemini` | Gemini / Vertex AI クライアント、リトライ、File API、レスポンス抽出。 |
-| `github.com/shouni/go-gemini-client/lyria` | 歌詞生成、作曲レシピ生成、Lyria 音声生成の統合アダプタ。`lyria.New` は `gemini.MultimodalGenerator` を受け取ります。 |
+| `github.com/shouni/go-gemini-client/lyria` | 歌詞生成 → 作曲レシピ生成 → Lyria 音声生成の 3 段。`lyria.New` は `gemini.MultimodalGenerator` を受け取ります。段の間に品質ゲートを挟むのは利用側の判断のため、一括実行の入口は用意していません。 |
+| `github.com/shouni/go-gemini-client/veo` | Veo 動画生成の投函と完了待ち。`veo.New` は `gemini.VideoGenerator` を受け取ります。 |
 
 ---
 
