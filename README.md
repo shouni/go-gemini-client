@@ -333,8 +333,12 @@ req.ModifyRequestBody = func(body map[string]any) map[string]any {
 | `MaxDelay` | リトライ待機時間の上限 | `120s` |
 | `FilePollingInterval` | File API の状態確認間隔 | `2s` |
 | `FilePollingTimeout` | File API の状態確認タイムアウト | `60s` |
+| `HTTPClient` | genai SDK が使う HTTP クライアント。タイムアウトやプロキシ、SSRF 対策済みクライアント（`securenet.NewSafeHTTPClient` 等）の注入に使います | SDK 既定 |
+| `OnRetry` | リトライ直前に呼ばれる通知関数 | なし |
 
 `APIKey` と `ProjectID` / `LocationID` は排他的です。Vertex AI を使う場合は `ProjectID` と `LocationID` の両方を指定してください。
+
+`HTTPClient` を指定しても認証は失われません。genai SDK は HTTP クライアントを渡されると Application Default Credentials の検出をスキップし、認証ヘッダを付けずに送信してしまいますが（Vertex AI では全リクエストが 401 `CREDENTIALS_MISSING` になります）、本ライブラリが認証情報を付け直します。渡したインスタンス自体は変更せず、複製を使うため、同じクライアントを他の用途と共有しても構いません。
 
 ---
 

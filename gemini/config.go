@@ -2,6 +2,7 @@ package gemini
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -38,6 +39,10 @@ type Config struct {
 	// クライアントを使いたい場合に指定します。
 	//
 	//	cfg.HTTPClient = securenet.NewSafeHTTPClient(60 * time.Second)
+	//
+	// 認証は気にしなくて構いません。genai は HTTPClient を渡されると ADC の検出を
+	// スキップして認証ヘッダ無しで送ってしまいますが、toClientConfig が Vertex AI では
+	// 認証情報を付け直します。渡したインスタンス自体は書き換えず、複製を使います。
 	HTTPClient *http.Client
 
 	// OnRetry はリトライ直前に呼び出されます。nil の場合は何もしません。
@@ -86,8 +91,14 @@ func (c Config) validate() error {
 }
 
 // toClientConfig Config を genai.ClientConfig に変換します。
-func (c Config) toClientConfig() *genai.ClientConfig {
-	cc := &genai.ClientConfig{HTTPClient: c.HTTPClient}
+//
+// HTTPClient が指定されている場合、Vertex AI では認証情報の付与も行います。genai は
+// ClientConfig.HTTPClient が非 nil だと ADC の検出そのものをスキップし、渡された
+// クライアントを認証ヘッダ無しで使うため、これが無いと全リクエストが 401
+// （CREDENTIALS_MISSING）になります。つまり素の &http.Client{Timeout: ...} を渡すと、
+// タイムアウトを設定したつもりで認証を捨てることになります。
+func (c Config) toClientConfig() (*genai.ClientConfig, error) {
+	cc := &genai.ClientConfig{}
 	if c.isVertexAI() {
 		cc.Project = c.ProjectID
 		cc.Location = c.LocationID
@@ -96,7 +107,24 @@ func (c Config) toClientConfig() *genai.ClientConfig {
 		cc.APIKey = c.APIKey
 		cc.Backend = genai.BackendGeminiAPI
 	}
-	return cc
+
+	if c.HTTPClient == nil {
+		return cc, nil
+	}
+	// UseDefaultCredentials は渡されたクライアントの Transport を書き換えるため、
+	// 呼び出し側が持っているインスタンスには触らないよう浅いコピーへ差し替える。
+	// Timeout などの設定は引き継がれる。
+	clone := *c.HTTPClient
+	cc.HTTPClient = &clone
+
+	// Gemini API バックエンドの認証は API キーのヘッダ付与で、Transport には依存しない。
+	if cc.Backend != genai.BackendVertexAI {
+		return cc, nil
+	}
+	if err := cc.UseDefaultCredentials(); err != nil {
+		return nil, fmt.Errorf("gemini: 指定された HTTPClient への認証情報の付与に失敗しました: %w", err)
+	}
+	return cc, nil
 }
 
 // orDefault は v が正の値であればそれを、そうでなければ def を返します。
