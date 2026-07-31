@@ -2,6 +2,7 @@ package gemini
 
 import (
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 
@@ -71,7 +72,10 @@ func TestConfig_ToClientConfig(t *testing.T) {
 			ProjectID:  "proj-v",
 			LocationID: "loc-v",
 		}
-		got := cfg.toClientConfig()
+		got, err := cfg.toClientConfig()
+		if err != nil {
+			t.Fatalf("toClientConfig() error = %v", err)
+		}
 		if got.Project != "proj-v" || got.Location != "loc-v" || got.Backend != genai.BackendVertexAI {
 			t.Errorf("toClientConfig() produced invalid Vertex config: %+v", got)
 		}
@@ -81,7 +85,10 @@ func TestConfig_ToClientConfig(t *testing.T) {
 		cfg := Config{
 			APIKey: "key-g",
 		}
-		got := cfg.toClientConfig()
+		got, err := cfg.toClientConfig()
+		if err != nil {
+			t.Fatalf("toClientConfig() error = %v", err)
+		}
 		if got.APIKey != "key-g" || got.Backend != genai.BackendGeminiAPI {
 			t.Errorf("toClientConfig() produced invalid Gemini config: %+v", got)
 		}
@@ -143,4 +150,58 @@ func TestConfig_FilePolling(t *testing.T) {
 			t.Errorf("getFilePollingTimeout() = %v, want %v", got, 5*time.Second)
 		}
 	})
+}
+
+// TestToClientConfigAttachesCredentialsToSuppliedHTTPClient は、HTTPClient を指定しても
+// Vertex AI の認証が効くことを検証します。
+//
+// genai は ClientConfig.HTTPClient が非 nil だと ADC の検出をスキップし、渡された
+// クライアントを認証ヘッダ無しで使います。そのため素の &http.Client{Timeout: ...} を
+// 渡すと全リクエストが 401 (CREDENTIALS_MISSING) になります。実際にこれで本番が
+// 停止したため、Transport が差し替えられている（＝認証が付いている）ことを確認します。
+func TestToClientConfigAttachesCredentialsToSuppliedHTTPClient(t *testing.T) {
+	skipWithoutGCPCredentials(t)
+
+	supplied := &http.Client{Timeout: 42 * time.Second}
+	cfg := Config{ProjectID: "p", LocationID: "us-central1", HTTPClient: supplied}
+
+	got, err := cfg.toClientConfig()
+	if err != nil {
+		t.Fatalf("toClientConfig() error = %v", err)
+	}
+	if got.HTTPClient == nil {
+		t.Fatal("HTTPClient = nil, want the supplied client")
+	}
+	if got.HTTPClient.Timeout != 42*time.Second {
+		t.Errorf("Timeout = %v, want the supplied value to survive", got.HTTPClient.Timeout)
+	}
+	if got.HTTPClient.Transport == nil {
+		t.Error("Transport = nil, want the authorization middleware attached")
+	}
+	// 呼び出し側のインスタンスは書き換えない（他所で使い回されている可能性がある）。
+	if supplied.Transport != nil {
+		t.Error("the caller's http.Client was mutated; it should have been copied")
+	}
+	if got.HTTPClient == supplied {
+		t.Error("HTTPClient is the caller's instance; it should have been copied")
+	}
+}
+
+// TestToClientConfigLeavesGeminiAPIClientAlone は、Gemini API バックエンドでは渡された
+// クライアントに認証情報を付けないことを検証します。API キーはヘッダで送られるため
+// Transport に依存せず、ADC を探しに行く必要もありません。
+func TestToClientConfigLeavesGeminiAPIClientAlone(t *testing.T) {
+	supplied := &http.Client{Timeout: 42 * time.Second}
+	cfg := Config{APIKey: "test-key", HTTPClient: supplied}
+
+	got, err := cfg.toClientConfig()
+	if err != nil {
+		t.Fatalf("toClientConfig() error = %v", err)
+	}
+	if got.HTTPClient.Timeout != 42*time.Second {
+		t.Errorf("Timeout = %v", got.HTTPClient.Timeout)
+	}
+	if got.HTTPClient.Transport != nil {
+		t.Error("Transport was replaced on the Gemini API backend; API keys travel as a header")
+	}
 }

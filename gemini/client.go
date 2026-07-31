@@ -52,7 +52,10 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 		return nil, err
 	}
 
-	clientCfg := cfg.toClientConfig()
+	clientCfg, err := cfg.toClientConfig()
+	if err != nil {
+		return nil, err
+	}
 	client, err := genai.NewClient(ctx, clientCfg)
 	if err != nil {
 		return nil, fmt.Errorf("gemini: クライアントの作成に失敗しました: %w", err)
