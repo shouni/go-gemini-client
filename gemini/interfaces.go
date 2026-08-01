@@ -37,6 +37,24 @@ type MultimodalGenerator interface {
 	GenerateWithAttachments(ctx context.Context, modelName string, prompt string, attachments []Attachment, opts GenerateOptions) (*Response, error)
 }
 
+// MultimodalStreamGenerator は、ストリーミング生成の genai 型を含まない対応物です。
+//
+// StreamGenerator と違い genai の型を含まないため、利用側はこのインターフェースにだけ
+// 依存すれば genai SDK を import せずに済みます。
+type MultimodalStreamGenerator interface {
+	GenerateContentStream(ctx context.Context, modelName string, prompt string) (iter.Seq2[*Response, error], error)
+	GenerateWithAttachmentsStream(ctx context.Context, modelName string, prompt string, attachments []Attachment, opts GenerateOptions) (iter.Seq2[*Response, error], error)
+}
+
+// MultimodalTokenCounter は、トークン計測の genai 型を含まない対応物です。
+//
+// 画像や音声はテキストよりトークン数が読みにくいため、添付を含めた事前見積もりを
+// genai SDK 抜きで行えるようにしています。
+type MultimodalTokenCounter interface {
+	CountTokens(ctx context.Context, modelName string, prompt string) (int32, error)
+	CountTokensWithAttachments(ctx context.Context, modelName string, prompt string, attachments []Attachment) (int32, error)
+}
+
 // VideoGenerator は、動画生成の長時間実行オペレーションを開始し進捗を確認する、
 // 最小のインターフェースです。
 //

@@ -3,6 +3,7 @@ package gemini
 import (
 	"context"
 	"fmt"
+	"iter"
 
 	"google.golang.org/genai"
 )
@@ -33,6 +34,20 @@ func (a Attachment) IsEmpty() bool {
 	return len(a.Data) == 0 && a.URI == ""
 }
 
+// validateSource は、データの指定方法（Data / URI）が排他になっているかを検証します。
+// field は、どの入力が不正だったかをエラーで示すためのラベルです。
+//
+// sentinel を引数で受けるのは、同じ「Data と URI の併用」でも呼び出し側から見た
+// 分類が異なるためです（生成の入力なら ErrInvalidAttachment、動画生成の入力なら
+// ErrInvalidVideoInput）。errors.Is での判定を経路ごとに保ったまま、文言と条件を
+// 1か所にまとめています。
+func (a Attachment) validateSource(sentinel error, field string) error {
+	if len(a.Data) > 0 && a.URI != "" {
+		return fmt.Errorf("%w: %s は Data と URI のどちらか一方だけを設定してください", sentinel, field)
+	}
+	return nil
+}
+
 // GenerateWithAttachments は、テキストプロンプトとバイナリ添付からコンテンツを生成します。
 //
 // GenerateWithParts の genai を伴わない入口です。テキスト 1 つと添付 n 件という、
@@ -47,6 +62,36 @@ func (c *Client) GenerateWithAttachments(ctx context.Context, modelName string, 
 		return nil, err
 	}
 	return c.GenerateWithParts(ctx, modelName, parts, opts)
+}
+
+// GenerateWithAttachmentsStream は、テキストプロンプトとバイナリ添付から
+// ストリーミングでコンテンツを生成します。
+//
+// GenerateWithPartsStream の genai を伴わない入口です。添付付きの生成を
+// ストリーミングで受け取りたい場合、これが無いと呼び出し側が Part を組み立てる
+// ためだけに genai SDK を import することになります。
+//
+// 入力の扱いと検証は GenerateWithAttachments と同じで、ストリーム開始後の
+// エラーの扱いは GenerateWithPartsStream と同じです。
+func (c *Client) GenerateWithAttachmentsStream(ctx context.Context, modelName string, prompt string, attachments []Attachment, opts GenerateOptions) (iter.Seq2[*Response, error], error) {
+	parts, err := attachmentParts(prompt, attachments)
+	if err != nil {
+		return nil, err
+	}
+	return c.GenerateWithPartsStream(ctx, modelName, parts, opts)
+}
+
+// CountTokensWithAttachments は、テキストプロンプトとバイナリ添付のトークン数を計測します。
+//
+// CountTokensWithParts の genai を伴わない入口です。画像や音声はテキストより
+// トークン数が読みにくく、送る前に測りたいのはむしろこちらなので、添付から直接
+// 測れるようにしています。
+func (c *Client) CountTokensWithAttachments(ctx context.Context, modelName string, prompt string, attachments []Attachment) (int32, error) {
+	parts, err := attachmentParts(prompt, attachments)
+	if err != nil {
+		return 0, err
+	}
+	return c.CountTokensWithParts(ctx, modelName, parts)
 }
 
 // attachmentParts は、プロンプトと添付を genai の Part スライスへ変換します。
@@ -64,8 +109,8 @@ func attachmentParts(prompt string, attachments []Attachment) ([]*genai.Part, er
 		if attachment.IsEmpty() {
 			continue
 		}
-		if len(attachment.Data) > 0 && attachment.URI != "" {
-			return nil, fmt.Errorf("gemini: attachments[%d] は Data と URI のどちらか一方だけを設定してください", i)
+		if err := attachment.validateSource(ErrInvalidAttachment, fmt.Sprintf("attachments[%d]", i)); err != nil {
+			return nil, err
 		}
 
 		// URI 参照は MIME type を省ける。拡張子から推測できない URL に誤った型を申告すると
@@ -78,7 +123,7 @@ func attachmentParts(prompt string, attachments []Attachment) ([]*genai.Part, er
 		}
 
 		if attachment.MIMEType == "" {
-			return nil, fmt.Errorf("gemini: attachments[%d] にMIME typeが設定されていません", i)
+			return nil, fmt.Errorf("%w: attachments[%d] にMIME typeが設定されていません", ErrInvalidAttachment, i)
 		}
 		parts = append(parts, &genai.Part{
 			InlineData: &genai.Blob{MIMEType: attachment.MIMEType, Data: attachment.Data},

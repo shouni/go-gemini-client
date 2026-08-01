@@ -116,6 +116,33 @@ func extractThoughts(resp *genai.GenerateContentResponse) string {
 	return sb.String()
 }
 
+// extractInlineData は、レスポンスに含まれるインラインデータを MIME type 付きで
+// 返却順のまま取り出します。
+//
+// nil のパートを読み飛ばすのは extractText / extractThoughts と同じ理由です。
+// パートはサーバーから来るものなので、こちら側の検証で nil を排除できません。
+func extractInlineData(resp *genai.GenerateContentResponse) []Attachment {
+	if resp == nil || len(resp.Candidates) == 0 {
+		return nil
+	}
+	candidate := resp.Candidates[0]
+	if candidate == nil || candidate.Content == nil {
+		return nil
+	}
+
+	var attachments []Attachment
+	for _, part := range candidate.Content.Parts {
+		if part == nil || part.InlineData == nil {
+			continue
+		}
+		attachments = append(attachments, Attachment{
+			MIMEType: part.InlineData.MIMEType,
+			Data:     part.InlineData.Data,
+		})
+	}
+	return attachments
+}
+
 // tokenUsageFromMetadata は genai のトークン使用量メタデータを公開型に変換します。
 func tokenUsageFromMetadata(meta *genai.GenerateContentResponseUsageMetadata) *TokenUsage {
 	if meta == nil {

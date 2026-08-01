@@ -255,3 +255,44 @@ func TestWaitRequiresOperationName(t *testing.T) {
 		t.Fatalf("Wait(blank) error = %v, want ErrMissingOperationName", err)
 	}
 }
+
+// TestSubmitReturnsOperationName verifies the submit half of the split can be used on its own, so a
+// caller that hands the wait to a later run does not have to reach past veo into gemini.StartVideo.
+func TestSubmitReturnsOperationName(t *testing.T) {
+	fake := &fakeGenerator{startOp: running("operations/submitted")}
+	client := newTestClient(t, fake)
+
+	name, err := client.Submit(context.Background(), "veo-test", gemini.VideoRequest{Prompt: "a cat"})
+	if err != nil {
+		t.Fatalf("Submit() error = %v", err)
+	}
+	if name != "operations/submitted" {
+		t.Errorf("name = %q, want the operation name", name)
+	}
+	if fake.pollCalls != 0 {
+		t.Errorf("PollVideo calls = %d, want 0 (Submit must not wait)", fake.pollCalls)
+	}
+}
+
+// TestSubmitRequiresOperationName verifies a nameless operation fails at submit time rather than
+// handing back a name that Wait cannot poll.
+func TestSubmitRequiresOperationName(t *testing.T) {
+	fake := &fakeGenerator{startOp: &gemini.VideoOperation{}}
+	client := newTestClient(t, fake)
+
+	_, err := client.Submit(context.Background(), "veo-test", gemini.VideoRequest{Prompt: "a cat"})
+	if !errors.Is(err, ErrMissingOperationName) {
+		t.Errorf("error = %v, want ErrMissingOperationName", err)
+	}
+}
+
+// TestSubmitPropagatesStartError verifies submission failures surface unchanged.
+func TestSubmitPropagatesStartError(t *testing.T) {
+	sentinel := errors.New("boom")
+	client := newTestClient(t, &fakeGenerator{startErr: sentinel})
+
+	_, err := client.Submit(context.Background(), "veo-test", gemini.VideoRequest{Prompt: "a cat"})
+	if !errors.Is(err, sentinel) {
+		t.Errorf("error = %v, want the start error", err)
+	}
+}

@@ -181,6 +181,47 @@ const (
 	SafetyOff SafetyThreshold = genai.HarmBlockThresholdOff
 )
 
+// Schema は、構造化出力（GenerateOptions.ResponseSchema）のスキーマです。
+//
+// genai.Schema の別名で、下の SchemaType 定数と合わせて使うことで、スキーマを
+// 書くためだけに genai SDK を import する必要をなくします。genai の値をそのまま
+// 渡すこともできます。
+//
+// map[string]any で書く ResponseJSONSchema と違い、フィールド名がコンパイル時に
+// 検査されます。JSON Schema の $ref のようにこの型で表現しきれない場合にだけ
+// ResponseJSONSchema を選んでください。
+//
+//	opts := gemini.GenerateOptions{
+//		ResponseMIMEType: "application/json",
+//		ResponseSchema: &gemini.Schema{
+//			Type: gemini.TypeObject,
+//			Properties: map[string]*gemini.Schema{
+//				"title": {Type: gemini.TypeString},
+//			},
+//			Required: []string{"title"},
+//		},
+//	}
+type Schema = genai.Schema
+
+// SchemaType は、スキーマのデータ型です（genai.Type の別名）。
+type SchemaType = genai.Type
+
+// スキーマのデータ型です。値は genai の対応する定数と同一です。
+const (
+	// TypeString は文字列です。
+	TypeString SchemaType = genai.TypeString
+	// TypeNumber は浮動小数点数です。
+	TypeNumber SchemaType = genai.TypeNumber
+	// TypeInteger は整数です。
+	TypeInteger SchemaType = genai.TypeInteger
+	// TypeBoolean は真偽値です。
+	TypeBoolean SchemaType = genai.TypeBoolean
+	// TypeArray は配列です。要素の型は Items で指定します。
+	TypeArray SchemaType = genai.TypeArray
+	// TypeObject はオブジェクトです。フィールドは Properties で指定します。
+	TypeObject SchemaType = genai.TypeObject
+)
+
 // NewSafetySettings は、標準的な4つのハームカテゴリ（暴力・ヘイト・性的表現・危険行為）
 // すべてに同一の閾値を適用した SafetySetting のスライスを返します。
 // 閾値をバックエンドや用途に応じてどう選ぶかは呼び出し側の判断に委ねます。

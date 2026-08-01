@@ -70,9 +70,10 @@ func (f *fakeModelClient) GenerateContent(_ context.Context, model string, conte
 	}, nil
 }
 
-func (f *fakeModelClient) GenerateContentStream(_ context.Context, model string, _ []*genai.Content, config *genai.GenerateContentConfig) iter.Seq2[*genai.GenerateContentResponse, error] {
+func (f *fakeModelClient) GenerateContentStream(_ context.Context, model string, contents []*genai.Content, config *genai.GenerateContentConfig) iter.Seq2[*genai.GenerateContentResponse, error] {
 	f.gotModel = model
 	f.gotConfig = config
+	f.gotContents = contents
 	return func(yield func(*genai.GenerateContentResponse, error) bool) {
 		if f.streamErr != nil {
 			yield(nil, f.streamErr)
@@ -654,5 +655,34 @@ func TestGenerateOptions_HasImageConfig(t *testing.T) {
 				t.Errorf("HasImageConfig() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestBuildGenerateConfigAcceptsAliasedSchema verifies a schema written with the package's own
+// Schema / SchemaType aliases reaches the SDK unchanged. The aliases exist so downstream repos stop
+// importing genai just to describe structured output, which is only true if they are the same type.
+func TestBuildGenerateConfigAcceptsAliasedSchema(t *testing.T) {
+	schema := &Schema{
+		Type: TypeObject,
+		Properties: map[string]*Schema{
+			"title":    {Type: TypeString},
+			"keywords": {Type: TypeArray, Items: &Schema{Type: TypeString}},
+		},
+		Required: []string{"title"},
+	}
+
+	c := &Client{}
+	cfg, err := c.buildGenerateConfig(GenerateOptions{ResponseMIMEType: "application/json", ResponseSchema: schema})
+	if err != nil {
+		t.Fatalf("buildGenerateConfig() error = %v", err)
+	}
+
+	// cfg.ResponseSchema は *genai.Schema なので、この比較がコンパイルできること自体が
+	// 「別名であって別型ではない」ことの検証になっている。
+	if cfg.ResponseSchema != schema {
+		t.Fatalf("ResponseSchema = %+v, want the schema passed in", cfg.ResponseSchema)
+	}
+	if cfg.ResponseSchema.Type != genai.TypeObject {
+		t.Errorf("Type = %q, want %q", cfg.ResponseSchema.Type, genai.TypeObject)
 	}
 }

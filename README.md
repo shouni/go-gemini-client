@@ -31,8 +31,8 @@
 - **決定論的な制御**: `Seed` により、生成結果の再現性を必要とするワークフローをサポートします。
 - **型安全なエラー判定**: 設定不備や入力不備はセンチネルエラーとして公開しており、`errors.Is` で判定できます。
 - **SDK 型を漏らさない入口**: `GenerateWithAttachments` と `gemini.Attachment` を使えば、マルチモーダル生成・構造化出力・安全設定・思考量のいずれも genai SDK を import せずに書けます。モックも 1 メソッドで済みます。
-- **ストリーミング生成**: `GenerateContentStream` / `GenerateWithPartsStream` で `iter.Seq2` によるチャンク単位のレスポンスを受け取れます。
-- **トークン数の事前計測**: `CountTokens` / `CountTokensWithParts` で、実際に生成せずにプロンプトのトークン数を見積もれます。
+- **ストリーミング生成**: `GenerateContentStream` / `GenerateWithAttachmentsStream` / `GenerateWithPartsStream` で `iter.Seq2` によるチャンク単位のレスポンスを受け取れます。
+- **トークン数の事前計測**: `CountTokens` / `CountTokensWithAttachments` / `CountTokensWithParts` で、実際に生成せずにプロンプトのトークン数を見積もれます。
 
 ### 📁 高度なリソース管理
 
@@ -42,7 +42,7 @@
 
 ### 🎬 Veo 動画生成 (`veo`)
 
-- **長時間実行オペレーションの完走**: 投函から完了までのポーリング、タイムアウト、一時的な失敗の許容をまとめて扱います。
+- **長時間実行オペレーションの完走**: 投函から完了までのポーリング、タイムアウト、一時的な失敗の許容をまとめて扱います。投函 (`Submit`) と完了待ち (`Wait`) は別の実行に分けられます。
 - **入力の事前検証**: Veo が併用できない入力（video と image など）を送信前に弾きます。
 - **genai 非依存**: `gemini.VideoGenerator` の 2 メソッドを注入するだけなので、テストは SDK も認証も不要です。
 
@@ -127,10 +127,11 @@ fmt.Println(resp.Text)
 
 添付の扱いは次のとおりです。
 
-- `Data` と `URI` は排他で、両方設定するとエラーになります
+- `Data` と `URI` は排他で、両方設定すると `ErrInvalidAttachment` になります
 - `Data` を送る場合 `MIMEType` は必須、`URI` を参照する場合は任意（省略するとサーバー側の判定に委ねます）
 - どちらも空の要素は読み飛ばされます。参照画像を「あれば渡す」形で組み立てる呼び出し側が、空要素の除去を毎回書かずに済みます
 - プロンプトが空でも添付があれば送信できます（音声だけを渡して解析させる用途）
+- 添付が無いテキスト生成でも使えます。`attachments` に `nil` を渡せば「プロンプト + `GenerateOptions`」の入口になり、`GenerateContent`（オプション無し）と `GenerateWithParts`（genai 依存）の間を埋めます
 
 プロンプトは添付より前に置かれます。GCS URI とインラインデータを任意の順序で混在させたい、System instruction を Part 単位で組み立てたい、といった場合は `GenerateWithParts` で公式 SDK の `genai.Part` を直接渡してください。
 
@@ -174,11 +175,24 @@ for _, attachment := range resp.Attachments {
 }
 ```
 
+### `gemini.Response` の中身
+
+| フィールド | 内容 |
+| --- | --- |
+| `Text` | 本文。思考パートを除く全テキストパートの連結です。 |
+| `Images` / `Audios` | インラインデータのバイト列を MIME type で振り分けたものです。 |
+| `Attachments` | インラインデータを MIME type 付きで返却順に保持します（`Images` / `Audios` の上位集合）。 |
+| `Thoughts` | 思考サマリ。`IncludeThoughts` が true でモデルが返した場合のみ設定され、`Text` には含まれません。 |
+| `Usage` | トークン使用量（`*gemini.TokenUsage`）。`PromptTokenCount` / `CandidatesTokenCount` / `TotalTokenCount` に加え、課金対象の `ThoughtsTokenCount` を持ちます。 |
+| `RawResponse` | genai SDK の生レスポンス。上記で足りない場合の逃げ道です。 |
+
 ---
 
 ## 📤 File API
 
 Gemini API の File API を使う場合は、アップロード後にファイルが `Active` になるまで自動で待機します。
+
+`UploadFile` は `gemini.UploadedFile{URI, Name}` を返します。`URI` は生成リクエストから参照する値、`Name` は `DeleteFile` に渡す識別子で、用途が違うため構造体で返しています。
 
 ```go
 f, err := os.Open("movie.mp4")
@@ -208,7 +222,7 @@ resp, err := client.GenerateWithParts(ctx, "gemini-3.6-flash", []*genai.Part{
 
 ## 📶 ストリーミング生成
 
-`GenerateContentStream` / `GenerateWithPartsStream` は、genai SDK の `iter.Seq2` をそのまま `gemini.Response` のストリームに変換して返します。チャンク単位でエラーが発生した場合は、そのチャンクの `error` 戻り値として伝播します（ストリーム開始後のリトライは行いません）。
+`GenerateContentStream` / `GenerateWithAttachmentsStream` / `GenerateWithPartsStream` は、genai SDK の `iter.Seq2` をそのまま `gemini.Response` のストリームに変換して返します。チャンク単位でエラーが発生した場合は、そのチャンクの `error` 戻り値として伝播します（ストリーム開始後のリトライは行いません）。
 
 ```go
 seq, err := client.GenerateContentStream(ctx, "gemini-3.6-flash", "Goについて3行で説明して")
@@ -224,11 +238,20 @@ for resp, err := range seq {
 }
 ```
 
+添付付きの生成をストリーミングで受け取る場合は `GenerateWithAttachmentsStream` を使います。入力の検証は `GenerateWithAttachments` と同じで、ストリーム開始前に失敗します。
+
+```go
+seq, err := client.GenerateWithAttachmentsStream(ctx, "gemini-3.6-flash",
+	"この画像の内容を実況してください",
+	[]gemini.Attachment{{URI: "gs://my-bucket/sample.jpg", MIMEType: "image/jpeg"}},
+	gemini.GenerateOptions{})
+```
+
 ---
 
 ## 🔢 トークン数の計測
 
-`CountTokens` / `CountTokensWithParts` は、実際に生成を行わずにプロンプトのトークン数だけを計測します。事前のコスト見積もりやコンテキスト長の検証に使えます。
+`CountTokens` / `CountTokensWithAttachments` / `CountTokensWithParts` は、実際に生成を行わずにプロンプトのトークン数だけを計測します。事前のコスト見積もりやコンテキスト長の検証に使えます。
 
 ```go
 total, err := client.CountTokens(ctx, "gemini-3.6-flash", "Goについて3行で説明して")
@@ -238,7 +261,14 @@ if err != nil {
 fmt.Println("推定トークン数:", total)
 ```
 
-生成レスポンス自体のトークン使用量は `Response.Usage`（`PromptTokenCount` / `CandidatesTokenCount` / `TotalTokenCount`）から参照できます。
+画像や音声はテキストよりトークン数が読みにくく、送る前に測りたいのはむしろこちらです。添付を含めた見積もりは `CountTokensWithAttachments` で、genai SDK を import せずに行えます。
+
+```go
+total, err := client.CountTokensWithAttachments(ctx, "gemini-3.6-flash", "この動画を要約して",
+	[]gemini.Attachment{{URI: "gs://my-bucket/clip.mp4", MIMEType: "video/mp4"}})
+```
+
+生成レスポンス自体のトークン使用量は `Response.Usage` から参照できます（`PromptTokenCount` / `CandidatesTokenCount` / `TotalTokenCount`、および思考に消費された `ThoughtsTokenCount`）。思考機能を使う場合、`ThoughtsTokenCount` も課金対象です。
 
 ---
 
@@ -273,6 +303,8 @@ if err != nil {
 video, _ := result.First() // video.URI に生成された動画の GCS URI が入ります
 ```
 
+`Result` は `OperationName`（課金や失敗の追跡用）、`Videos`、`FilteredCount` / `FilteredReasons`（安全性ポリシーで除外された本数と理由）を持ちます。1 本も生成されなかった場合は `Generate` が `ErrNoVideoGenerated` を返すため、`FilteredCount` が非ゼロで `Videos` も非空なのは、複数本を要求して一部だけ除外されたケースです。
+
 `veo.New` は `gemini.VideoGenerator`（`StartVideo` / `PollVideo` の 2 メソッド）を受け取るだけなので、テストでは genai SDK も GCP 認証も無しでポーリング挙動を検証できます。
 
 ### 入力の組み合わせ
@@ -286,13 +318,36 @@ Veo は入力系統を併用できません。`StartVideo` は API が確実に�
 | reference-to-video | `References`（`Image` / `Video` / `LastFrame` とは排他） |
 | video extension（継続生成） | `Video`（`Image` とは排他） |
 
+`References` に渡す `veo.Reference` は、画像の使われ方を `Type` で指定します。`gemini.VideoReferenceAsset`（被写体を登場させる。最大3枚）と `gemini.VideoReferenceStyle`（画風を反映させる）から選び、未指定は API のデフォルトに委ねます。
+
+生成パラメータは `veo.Request` の以下のフィールドで指定します。ゼロ値はいずれも「API のデフォルトに委ねる」の意味です。
+
+| フィールド | 役割 |
+| --- | --- |
+| `Prompt` | 生成指示。`Image` / `Video` のいずれも無い場合は必須です。 |
+| `DurationSec` | 生成する動画の秒数。受け付けられる値はモデルと入力の組み合わせで異なります。 |
+| `AspectRatio` / `Resolution` | `"16:9"` / `"9:16"`、`"720p"` / `"1080p"` などを指定します。 |
+| `NegativePrompt` | 生成に含めたくない要素を指定します。 |
+| `GenerateAudio` | 音声を同時生成するか（`*bool`）。nil で API のデフォルト。 |
+| `Seed` | 再現性のためのシード（`*int64`）。`int32` の範囲外は `ErrInvalidSeed` です。 |
+| `NumberOfVideos` | 生成する本数。0 で API のデフォルト（通常 1 本）。 |
+| `OutputGCSURI` | 保存先の GCS バケット。未指定なら結果はバイト列で返ります（長尺では応答が大きくなるため通常は指定します）。 |
+
 ### ポーリングの持ち方
 
 `gemini.PollVideo` は **1 回の問い合わせに徹し、リトライを掛けません**。ポーリング自体が繰り返しの仕組みなので、その内部でさらにバックオフを効かせると 1 回の問い合わせに数十秒かかりうる二重の待ちになり、設定したポーリング間隔とタイムアウトが意味を失うためです。一時的な失敗を何回まで許容するかは、間隔とタイムアウトを持っている `veo.Client` の判断で、`WithMaxPollErrors`（既定 10 回）で調整します。
 
 一方、**投函（`StartVideo`）には `Config` のリトライ設定が効きます**。レート制限や一時的なサーバーエラーで 1 本分の生成が落ちるのを防ぐためです。
 
-`Generate` は投函と完了待ちをまとめて行いますが、`Wait(ctx, operationName)` を単体でも呼べます。実行時間に上限のあるジョブ基盤で、投函だけ済ませて一旦戻り、次の実行でオペレーション名を渡して待ちを再開する、といった使い方ができます。
+`Generate` は投函と完了待ちをまとめて行いますが、`Submit` と `Wait` に分けても呼べます。実行時間に上限のあるジョブ基盤で、投函だけ済ませて一旦戻り、次の実行でオペレーション名を渡して待ちを再開する、といった使い方ができます。
+
+```go
+// 実行 1: 投函してオペレーション名を保存する（完了は待たない）
+name, err := videoClient.Submit(ctx, "veo-3.1-generate-001", veo.Request{Prompt: "..."})
+
+// 実行 2: 保存した名前で待ちを再開する
+result, err := videoClient.Wait(ctx, name)
+```
 
 ### SDK 未対応フィールドの送信
 
@@ -363,7 +418,7 @@ req.ModifyRequestBody = func(body map[string]any) map[string]any {
 | `PersonGeneration` | Vertex AI 画像生成での人物生成ポリシーを指定します。 |
 | `SafetySettings` | 安全フィルタの設定。`gemini.NewSafetySettings(gemini.SafetyBlockNone)` で構築できます。 |
 | `ResponseMIMEType` | `image/png` や `audio/wav` など、期待するレスポンス MIME type を指定します。 |
-| `ResponseSchema` | 構造化出力（constrained decoding）のスキーマ。`application/json` と併用すると、出力が文法レベルでスキーマに制約されます。 |
+| `ResponseSchema` | 構造化出力（constrained decoding）のスキーマ（`*gemini.Schema`）。`application/json` と併用すると、出力が文法レベルでスキーマに制約されます。 |
 | `ResponseJSONSchema` | 標準的な JSON Schema による構造化出力。`$ref` を含む複雑なスキーマで `ResponseSchema` がうまく機能しない場合の代替です。併用した場合はこちらが優先されます。 |
 
 標準的な4つのハームカテゴリ（暴力・ヘイト・性的表現・危険行為）すべてに同一の閾値を適用したい場合は、`gemini.NewSafetySettings(threshold)` ヘルパーを使うと `SafetySettings` を簡潔に構築できます。閾値をバックエンドや用途に応じてどう選ぶかは呼び出し側の判断に委ねています（Vertex AI は `SafetyOff` を受け付けません）。
@@ -373,6 +428,24 @@ opts := gemini.GenerateOptions{
     SafetySettings: gemini.NewSafetySettings(gemini.SafetyBlockNone),
 }
 ```
+
+構造化出力のスキーマは `gemini.Schema` と `gemini.TypeObject` などの型定数で書けます（`genai.Schema` の別名なので、genai の値をそのまま渡すこともできます）。
+
+```go
+opts := gemini.GenerateOptions{
+    ResponseMIMEType: "application/json",
+    ResponseSchema: &gemini.Schema{
+        Type: gemini.TypeObject,
+        Properties: map[string]*gemini.Schema{
+            "title":    {Type: gemini.TypeString},
+            "keywords": {Type: gemini.TypeArray, Items: &gemini.Schema{Type: gemini.TypeString}},
+        },
+        Required: []string{"title"},
+    },
+}
+```
+
+`ResponseJSONSchema` の `map[string]any` と違い、フィールド名がコンパイル時に検査されます（`"propertise"` のような綴り間違いが黙って無視されません）。`$ref` を含むなど、この型で表現しきれないスキーマの場合だけ `ResponseJSONSchema` を選んでください。
 
 閾値は `gemini.SafetyBlockNone` / `SafetyBlockLowAndAbove` / `SafetyBlockMediumAndAbove` / `SafetyBlockOnlyHigh` / `SafetyOff` から選べます。同様に思考量も `gemini.ThinkingMinimal` / `ThinkingLow` / `ThinkingMedium` / `ThinkingHigh` を用意しており、これらを使えば設定値を選ぶためだけに genai SDK を import する必要はありません。
 
@@ -421,13 +494,18 @@ if err := json.Unmarshal([]byte(jsonStr), &out); err != nil {
 - `ErrEmptyParts`: 生成パーツが空の場合。
 - `ErrInvalidPart`: 生成パーツに nil が含まれている場合。
 - `ErrInvalidSeed`: `Seed` が `int32` の範囲外の場合。
+- `ErrInvalidAttachment`: 添付の指定が不正な場合（`Data` と `URI` の併用、`Data` に MIME type が無い場合）。
 - `ErrEmptyOperationName`: オペレーション名が空の場合。
 - `ErrInvalidVideoInput`: 動画生成の入力の組み合わせが API の受け付けないものだった場合。
 - `ErrVideoGenerationFailed`: 動画生成のオペレーションが失敗として完了した場合（`VideoOperation.Failure` に載ります）。
+- `ErrBlocked`: 安全フィルタ等により生成がブロックされた場合。詳細は `APIResponseError.FinishReason` を参照します。
+- `ErrEmptyResponse`: 候補が 1 件も含まれないレスポンスが返された場合。
+
+`ErrBlocked` / `ErrEmptyResponse` は `*APIResponseError` として返り、`Unwrap` がこれらのセンチネルを返すため `errors.Is` で分類できます。どちらも再試行では解決しないため、リトライ対象外です。
 
 `veo` パッケージは以下を公開しています。
 
-- `veo.ErrBackendRequired`: `veo.New` に nil のバックエンドを渡した場合。
+- `veo.ErrGeneratorRequired`: `veo.New` に nil の生成クライアントを渡した場合。
 - `veo.ErrMissingOperationName`: 完了待ちに必要なオペレーション名が無い場合。
 - `veo.ErrNoVideoGenerated`: 成功で完了したのに動画が 1 本も返らなかった場合（安全性ポリシーによる除外が典型）。
 - `veo.ErrPollFailed`: 生成状況の確認が連続して失敗し、完了を待てなくなった場合。
@@ -445,6 +523,8 @@ if err := json.Unmarshal([]byte(jsonStr), &out); err != nil {
 | `BackendInspector` | `IsVertexAI` | 含まない |
 | `FileManager` | `UploadFile` / `DeleteFile` | 含まない |
 | `MultimodalModel` | 上記 3 つ（生成・ファイル管理・バックエンド判定）の集合 | 含まない |
+| `MultimodalStreamGenerator` | `GenerateContentStream` / `GenerateWithAttachmentsStream` | 含まない |
+| `MultimodalTokenCounter` | `CountTokens` / `CountTokensWithAttachments` | 含まない |
 | `VideoGenerator` | `StartVideo` / `PollVideo` | 含まない |
 | `Generator` | `GenerateWithParts` + `IsVertexAI` | **含む** |
 | `GenerativeModel` | `Generator` + `FileManager` | **含む** |

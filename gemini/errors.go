@@ -19,6 +19,9 @@ var (
 	ErrInvalidPart = errors.New("生成パーツに nil を含めることはできません")
 	// ErrInvalidSeed は、Seed が int32 の範囲外の場合に返されます。
 	ErrInvalidSeed = errors.New("seed は int32 の範囲内である必要があります")
+	// ErrInvalidAttachment は、添付の指定が不正な場合に返されます。
+	// Data と URI の併用、および Data に MIME type が無い場合が該当します。
+	ErrInvalidAttachment = errors.New("添付の指定が不正です")
 	// ErrEmptyOperationName は、オペレーション名が空の場合に返されます。
 	ErrEmptyOperationName = errors.New("オペレーション名を空にすることはできません")
 	// ErrInvalidVideoInput は、動画生成の入力の組み合わせが API の受け付けない

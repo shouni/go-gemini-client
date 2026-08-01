@@ -17,13 +17,15 @@ import (
 // これらのアサーションがないと、Client のメソッドシグネチャがドリフトしても
 // 下流の利用側がビルドされるまで気付けません。
 var (
-	_ ContentGenerator    = (*Client)(nil)
-	_ GenerativeModel     = (*Client)(nil)
-	_ MultimodalGenerator = (*Client)(nil)
-	_ MultimodalModel     = (*Client)(nil)
-	_ StreamGenerator     = (*Client)(nil)
-	_ TokenCounter        = (*Client)(nil)
-	_ VideoGenerator      = (*Client)(nil)
+	_ ContentGenerator          = (*Client)(nil)
+	_ GenerativeModel           = (*Client)(nil)
+	_ MultimodalGenerator       = (*Client)(nil)
+	_ MultimodalModel           = (*Client)(nil)
+	_ MultimodalStreamGenerator = (*Client)(nil)
+	_ MultimodalTokenCounter    = (*Client)(nil)
+	_ StreamGenerator           = (*Client)(nil)
+	_ TokenCounter              = (*Client)(nil)
+	_ VideoGenerator            = (*Client)(nil)
 )
 
 // Client は Gemini SDK をラップしたメイン構造体です。
@@ -224,23 +226,17 @@ func responseFromGenAI(resp *genai.GenerateContentResponse, lenient bool) (*Resp
 		return &Response{Text: text}, nil
 	}
 
+	// MIME タイプで振り分ける。Images / Audios は Attachments の部分集合で、
+	// 型を意識せずバイト列だけ欲しい呼び出し側のための入口です。
+	attachments := extractInlineData(resp)
 	var images [][]byte
 	var audios [][]byte
-	var attachments []Attachment
-	if len(resp.Candidates) > 0 && resp.Candidates[0] != nil && resp.Candidates[0].Content != nil {
-		for _, part := range resp.Candidates[0].Content.Parts {
-			if part.InlineData != nil {
-				mime := part.InlineData.MIMEType
-				data := part.InlineData.Data
-				attachments = append(attachments, Attachment{MIMEType: mime, Data: data})
-
-				// MIMEタイプで振り分け
-				if strings.HasPrefix(mime, "image/") {
-					images = append(images, data)
-				} else if strings.HasPrefix(mime, "audio/") {
-					audios = append(audios, data)
-				}
-			}
+	for _, attachment := range attachments {
+		switch {
+		case strings.HasPrefix(attachment.MIMEType, "image/"):
+			images = append(images, attachment.Data)
+		case strings.HasPrefix(attachment.MIMEType, "audio/"):
+			audios = append(audios, attachment.Data)
 		}
 	}
 
