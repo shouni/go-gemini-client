@@ -175,11 +175,24 @@ for _, attachment := range resp.Attachments {
 }
 ```
 
+### `gemini.Response` の中身
+
+| フィールド | 内容 |
+| --- | --- |
+| `Text` | 本文。思考パートを除く全テキストパートの連結です。 |
+| `Images` / `Audios` | インラインデータのバイト列を MIME type で振り分けたものです。 |
+| `Attachments` | インラインデータを MIME type 付きで返却順に保持します（`Images` / `Audios` の上位集合）。 |
+| `Thoughts` | 思考サマリ。`IncludeThoughts` が true でモデルが返した場合のみ設定され、`Text` には含まれません。 |
+| `Usage` | トークン使用量（`*gemini.TokenUsage`）。`PromptTokenCount` / `CandidatesTokenCount` / `TotalTokenCount` に加え、課金対象の `ThoughtsTokenCount` を持ちます。 |
+| `RawResponse` | genai SDK の生レスポンス。上記で足りない場合の逃げ道です。 |
+
 ---
 
 ## 📤 File API
 
 Gemini API の File API を使う場合は、アップロード後にファイルが `Active` になるまで自動で待機します。
+
+`UploadFile` は `gemini.UploadedFile{URI, Name}` を返します。`URI` は生成リクエストから参照する値、`Name` は `DeleteFile` に渡す識別子で、用途が違うため構造体で返しています。
 
 ```go
 f, err := os.Open("movie.mp4")
@@ -255,7 +268,7 @@ total, err := client.CountTokensWithAttachments(ctx, "gemini-3.6-flash", "この
 	[]gemini.Attachment{{URI: "gs://my-bucket/clip.mp4", MIMEType: "video/mp4"}})
 ```
 
-生成レスポンス自体のトークン使用量は `Response.Usage`（`PromptTokenCount` / `CandidatesTokenCount` / `TotalTokenCount`）から参照できます。
+生成レスポンス自体のトークン使用量は `Response.Usage` から参照できます（`PromptTokenCount` / `CandidatesTokenCount` / `TotalTokenCount`、および思考に消費された `ThoughtsTokenCount`）。思考機能を使う場合、`ThoughtsTokenCount` も課金対象です。
 
 ---
 
@@ -290,6 +303,8 @@ if err != nil {
 video, _ := result.First() // video.URI に生成された動画の GCS URI が入ります
 ```
 
+`Result` は `OperationName`（課金や失敗の追跡用）、`Videos`、`FilteredCount` / `FilteredReasons`（安全性ポリシーで除外された本数と理由）を持ちます。1 本も生成されなかった場合は `Generate` が `ErrNoVideoGenerated` を返すため、`FilteredCount` が非ゼロで `Videos` も非空なのは、複数本を要求して一部だけ除外されたケースです。
+
 `veo.New` は `gemini.VideoGenerator`（`StartVideo` / `PollVideo` の 2 メソッド）を受け取るだけなので、テストでは genai SDK も GCP 認証も無しでポーリング挙動を検証できます。
 
 ### 入力の組み合わせ
@@ -302,6 +317,21 @@ Veo は入力系統を併用できません。`StartVideo` は API が確実に�
 | first/last frame 補間 | `Image` + `LastFrame` |
 | reference-to-video | `References`（`Image` / `Video` / `LastFrame` とは排他） |
 | video extension（継続生成） | `Video`（`Image` とは排他） |
+
+`References` に渡す `veo.Reference` は、画像の使われ方を `Type` で指定します。`gemini.VideoReferenceAsset`（被写体を登場させる。最大3枚）と `gemini.VideoReferenceStyle`（画風を反映させる）から選び、未指定は API のデフォルトに委ねます。
+
+生成パラメータは `veo.Request` の以下のフィールドで指定します。ゼロ値はいずれも「API のデフォルトに委ねる」の意味です。
+
+| フィールド | 役割 |
+| --- | --- |
+| `Prompt` | 生成指示。`Image` / `Video` のいずれも無い場合は必須です。 |
+| `DurationSec` | 生成する動画の秒数。受け付けられる値はモデルと入力の組み合わせで異なります。 |
+| `AspectRatio` / `Resolution` | `"16:9"` / `"9:16"`、`"720p"` / `"1080p"` などを指定します。 |
+| `NegativePrompt` | 生成に含めたくない要素を指定します。 |
+| `GenerateAudio` | 音声を同時生成するか（`*bool`）。nil で API のデフォルト。 |
+| `Seed` | 再現性のためのシード（`*int64`）。`int32` の範囲外は `ErrInvalidSeed` です。 |
+| `NumberOfVideos` | 生成する本数。0 で API のデフォルト（通常 1 本）。 |
+| `OutputGCSURI` | 保存先の GCS バケット。未指定なら結果はバイト列で返ります（長尺では応答が大きくなるため通常は指定します）。 |
 
 ### ポーリングの持ち方
 
@@ -468,6 +498,10 @@ if err := json.Unmarshal([]byte(jsonStr), &out); err != nil {
 - `ErrEmptyOperationName`: オペレーション名が空の場合。
 - `ErrInvalidVideoInput`: 動画生成の入力の組み合わせが API の受け付けないものだった場合。
 - `ErrVideoGenerationFailed`: 動画生成のオペレーションが失敗として完了した場合（`VideoOperation.Failure` に載ります）。
+- `ErrBlocked`: 安全フィルタ等により生成がブロックされた場合。詳細は `APIResponseError.FinishReason` を参照します。
+- `ErrEmptyResponse`: 候補が 1 件も含まれないレスポンスが返された場合。
+
+`ErrBlocked` / `ErrEmptyResponse` は `*APIResponseError` として返り、`Unwrap` がこれらのセンチネルを返すため `errors.Is` で分類できます。どちらも再試行では解決しないため、リトライ対象外です。
 
 `veo` パッケージは以下を公開しています。
 
