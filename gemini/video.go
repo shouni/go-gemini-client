@@ -214,7 +214,7 @@ func (r VideoRequest) buildConfig() (*genai.GenerateVideosConfig, error) {
 		Seed:           seed,
 	}
 	if r.DurationSec > 0 {
-		config.DurationSeconds = Ptr(int32(r.DurationSec))
+		config.DurationSeconds = new(int32(r.DurationSec))
 	}
 	if r.NumberOfVideos > 0 {
 		config.NumberOfVideos = int32(r.NumberOfVideos)
@@ -252,8 +252,8 @@ func (r VideoRequest) buildConfig() (*genai.GenerateVideosConfig, error) {
 // videoImage は Attachment を genai の画像入力へ変換します。field は、どの入力が
 // 不正だったかをエラーで示すためのフィールド名です。
 func videoImage(a *Attachment, field string) (*genai.Image, error) {
-	if len(a.Data) > 0 && a.URI != "" {
-		return nil, fmt.Errorf("%w: %s は Data と URI のどちらか一方だけを設定してください", ErrInvalidVideoInput, field)
+	if err := a.validateSource(ErrInvalidVideoInput, field); err != nil {
+		return nil, err
 	}
 	return &genai.Image{
 		GCSURI:     a.URI,
@@ -264,8 +264,8 @@ func videoImage(a *Attachment, field string) (*genai.Image, error) {
 
 // videoClip は Attachment を genai の動画入力へ変換します。
 func videoClip(a *Attachment) (*genai.Video, error) {
-	if len(a.Data) > 0 && a.URI != "" {
-		return nil, fmt.Errorf("%w: Video は Data と URI のどちらか一方だけを設定してください", ErrInvalidVideoInput)
+	if err := a.validateSource(ErrInvalidVideoInput, "Video"); err != nil {
+		return nil, err
 	}
 	return &genai.Video{
 		URI:        a.URI,

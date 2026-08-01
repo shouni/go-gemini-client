@@ -338,3 +338,33 @@ func TestBuildGenerateConfig_ResponseSchema(t *testing.T) {
 		}
 	})
 }
+
+// TestResponseFromGenAISkipsNilParts verifies a nil part in the response does not panic.
+// Parts come from the server, so no amount of input validation rules them out — extractText
+// already skips them and the inline-data path has to do the same.
+func TestResponseFromGenAISkipsNilParts(t *testing.T) {
+	resp := respWithParts(genai.FinishReasonStop,
+		nil,
+		&genai.Part{Text: "解説"},
+		&genai.Part{InlineData: &genai.Blob{MIMEType: "image/png", Data: []byte("img")}},
+		nil,
+		&genai.Part{InlineData: &genai.Blob{MIMEType: "audio/mpeg", Data: []byte("snd")}},
+	)
+
+	got, err := responseFromGenAI(resp, false)
+	if err != nil {
+		t.Fatalf("responseFromGenAI() error = %v", err)
+	}
+	if got.Text != "解説" {
+		t.Errorf("Text = %q, want %q", got.Text, "解説")
+	}
+	if len(got.Attachments) != 2 {
+		t.Fatalf("Attachments = %d, want 2", len(got.Attachments))
+	}
+	if len(got.Images) != 1 || string(got.Images[0]) != "img" {
+		t.Errorf("Images = %q, want the png bytes", got.Images)
+	}
+	if len(got.Audios) != 1 || string(got.Audios[0]) != "snd" {
+		t.Errorf("Audios = %q, want the mpeg bytes", got.Audios)
+	}
+}

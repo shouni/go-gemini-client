@@ -1,13 +1,10 @@
 package lyria
 
-import (
-	"github.com/shouni/go-gemini-client/gemini"
-	"google.golang.org/genai"
-)
+import "github.com/shouni/go-gemini-client/gemini"
 
 // buildJSONGenerateOptions は Gemini による JSON 形式の構造化データ生成に最適化されたオプションを返します。
 // schema を指定すると構造化出力（constrained decoding）が有効になり、出力が文法レベルで制約されます。
-func buildJSONGenerateOptions(seed *int64, schema *genai.Schema) gemini.GenerateOptions {
+func buildJSONGenerateOptions(seed *int64, schema *gemini.Schema) gemini.GenerateOptions {
 	opts := buildBaseOptions(seed, "application/json")
 	opts.ResponseSchema = schema
 	return opts
@@ -24,7 +21,7 @@ func buildAudioGenerateOptions(seed *int64) gemini.GenerateOptions {
 // 入力・出力の制御は呼び出し側または後段処理で行う前提です。
 func buildBaseOptions(seed *int64, mimeType string) gemini.GenerateOptions {
 	opts := gemini.GenerateOptions{
-		SafetySettings: gemini.NewSafetySettings(genai.HarmBlockThresholdBlockNone),
+		SafetySettings: gemini.NewSafetySettings(gemini.SafetyBlockNone),
 	}
 	if seed != nil {
 		opts.Seed = seed

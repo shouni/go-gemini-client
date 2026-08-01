@@ -67,6 +67,43 @@ func New(generator gemini.VideoGenerator, opts ...Option) (*Client, error) {
 // gemini.ErrVideoGenerationFailed を含むエラーになります。完了を待てなかった場合は
 // ポーリングの打ち切り理由（タイムアウトまたは ErrPollFailed）を返します。
 func (c *Client) Generate(ctx context.Context, modelName string, req Request) (*Result, error) {
+	op, err := c.start(ctx, modelName, req)
+	if err != nil {
+		return nil, err
+	}
+
+	// 投函の応答が既に完了しているなら、1回分のポーリングを省いてそのまま返す。
+	if op.Done {
+		return resultFrom(op)
+	}
+	if strings.TrimSpace(op.Name) == "" {
+		return nil, ErrMissingOperationName
+	}
+	return c.Wait(ctx, op.Name)
+}
+
+// Submit は動画生成を開始し、完了を待たずにオペレーション名を返します。
+//
+// Wait と対になる入口です。実行時間に上限のあるジョブ基盤で、投函だけ済ませて一旦
+// 戻り、次の実行で名前を渡して待ちを再開する、といった使い方ができます。これが無いと
+// 投函側だけ veo を通らず gemini.StartVideo を直接呼ぶことになり、投函と待ちで
+// 依存先が割れます。
+//
+// 返した名前はそのまま Wait に渡せます。
+func (c *Client) Submit(ctx context.Context, modelName string, req Request) (string, error) {
+	op, err := c.start(ctx, modelName, req)
+	if err != nil {
+		return "", err
+	}
+	// 完了済みでも名前は返す。結果は Wait 側で 1 回のポーリングにより取得できる。
+	if strings.TrimSpace(op.Name) == "" {
+		return "", ErrMissingOperationName
+	}
+	return op.Name, nil
+}
+
+// start は動画生成を投函し、応答の欠落を弾いた上でオペレーションを返します。
+func (c *Client) start(ctx context.Context, modelName string, req Request) (*gemini.VideoOperation, error) {
 	op, err := c.generator.StartVideo(ctx, modelName, req)
 	if err != nil {
 		return nil, err
@@ -75,14 +112,7 @@ func (c *Client) Generate(ctx context.Context, modelName string, req Request) (*
 		return nil, fmt.Errorf("veo: %w", gemini.ErrEmptyResponse)
 	}
 	slog.InfoContext(ctx, "動画生成オペレーションを開始しました", "operation", op.Name, "model", modelName)
-
-	if op.Done {
-		return resultFrom(op)
-	}
-	if strings.TrimSpace(op.Name) == "" {
-		return nil, ErrMissingOperationName
-	}
-	return c.Wait(ctx, op.Name)
+	return op, nil
 }
 
 // Wait は、開始済みの動画生成オペレーションが完了するまでポーリングして結果を返します。

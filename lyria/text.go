@@ -10,7 +10,6 @@ import (
 	"github.com/shouni/go-gemini-client/gemini"
 	"golang.org/x/sync/singleflight"
 	"golang.org/x/time/rate"
-	"google.golang.org/genai"
 )
 
 const defaultComposeMode = "default"
@@ -36,7 +35,7 @@ func (g *lyriaTextGenerator) resolveModel(override string) string {
 // generateJSON は歌詞・レシピ生成で共通の「singleflight → Gemini 呼び出し → JSON デコード」
 // フローを実行します。kind はエラーメッセージと singleflight キーの識別子です。
 // 戻り値は singleflight で共有されるため、呼び出し側で複製してから返してください。
-func generateJSON[T any](ctx context.Context, g *lyriaTextGenerator, kind, model, prompt string, seed *int64, schema *genai.Schema) (*T, error) {
+func generateJSON[T any](ctx context.Context, g *lyriaTextGenerator, kind, model, prompt string, seed *int64, schema *gemini.Schema) (*T, error) {
 	// seed は生成結果を変えるため、必ずキーに含める。含め忘れると同一プロンプトで
 	// seed 違いの同時呼び出しが 1 回の生成結果を共有してしまう。
 	key := singleflightKey(kind, model, prompt, singleflightSeedKey(seed))
