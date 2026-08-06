@@ -372,7 +372,7 @@ req.ModifyRequestBody = func(body map[string]any) map[string]any {
 }
 ```
 
-どちらも効くのは「SDK が既に叩いているエンドポイントのボディをいじる」場合だけです。エンドポイント自体が SDK に無い場合（genai v1.66.0 時点の Interactions API など）は救えません。
+どちらも効くのは「SDK が既に叩いているエンドポイントのボディをいじる」場合だけです。エンドポイント自体が SDK に無い場合（Interactions API など）は救えません。
 
 ---
 
