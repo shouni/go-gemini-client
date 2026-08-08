@@ -8,25 +8,29 @@ import (
 )
 
 // 入力検証エラー。
+//
+// センチネルの文言は英語 + "gemini: " プレフィックスで統一しています。深いラップの
+// 中に埋まってもどのパッケージ由来か判別できるようにするためで、人間向けの文脈は
+// ラップする側（fmt.Errorf の %w）が日本語で補います。
 var (
 	// ErrEmptyPrompt は、プロンプトが空の場合に返されます。
-	ErrEmptyPrompt = errors.New("プロンプトを空にすることはできません")
+	ErrEmptyPrompt = errors.New("gemini: prompt is empty")
 	// ErrEmptyModelName は、モデル名が空の場合に返されます。
-	ErrEmptyModelName = errors.New("モデル名を空にすることはできません")
+	ErrEmptyModelName = errors.New("gemini: model name is empty")
 	// ErrEmptyParts は、生成パーツが空の場合に返されます。
-	ErrEmptyParts = errors.New("生成パーツを空にすることはできません")
+	ErrEmptyParts = errors.New("gemini: generation parts are empty")
 	// ErrInvalidPart は、生成パーツに nil が含まれる場合に返されます。
-	ErrInvalidPart = errors.New("生成パーツに nil を含めることはできません")
+	ErrInvalidPart = errors.New("gemini: generation parts must not contain nil")
 	// ErrInvalidSeed は、Seed が int32 の範囲外の場合に返されます。
-	ErrInvalidSeed = errors.New("seed は int32 の範囲内である必要があります")
+	ErrInvalidSeed = errors.New("gemini: seed must fit in int32")
 	// ErrInvalidAttachment は、添付の指定が不正な場合に返されます。
 	// Data と URI の併用、および Data に MIME type が無い場合が該当します。
-	ErrInvalidAttachment = errors.New("添付の指定が不正です")
+	ErrInvalidAttachment = errors.New("gemini: invalid attachment")
 	// ErrEmptyOperationName は、オペレーション名が空の場合に返されます。
-	ErrEmptyOperationName = errors.New("オペレーション名を空にすることはできません")
+	ErrEmptyOperationName = errors.New("gemini: operation name is empty")
 	// ErrInvalidVideoInput は、動画生成の入力の組み合わせが API の受け付けない
 	// ものだった場合に返されます（Image と Video の併用など）。
-	ErrInvalidVideoInput = errors.New("動画生成の入力の組み合わせが不正です")
+	ErrInvalidVideoInput = errors.New("gemini: invalid video generation input")
 )
 
 // ErrVideoGenerationFailed は、動画生成のオペレーションが失敗として完了したことを

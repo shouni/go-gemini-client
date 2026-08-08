@@ -3,7 +3,6 @@ package gemini
 import (
 	"context"
 	"fmt"
-	"iter"
 
 	"google.golang.org/genai"
 )
@@ -50,9 +49,8 @@ func (a Attachment) validateSource(sentinel error, field string) error {
 
 // GenerateWithAttachments は、テキストプロンプトとバイナリ添付からコンテンツを生成します。
 //
-// GenerateWithParts の genai を伴わない入口です。テキスト 1 つと添付 n 件という、
-// マルチモーダル呼び出しのほとんどを占める形に絞っています。GCS URI の参照や
-// システム指示を Part 単位で細かく組み立てたい場合は GenerateWithParts を使ってください。
+// テキスト 1 つと添付 n 件という、マルチモーダル呼び出しのほとんどを占める形に
+// 絞った、genai の型を伴わない生成の入口です。
 //
 // prompt が空でも添付があれば送信します（音声や画像だけを渡して解析させる用途）。
 // 両方が空の場合と、データを持つ添付に MIME type が無い場合はエラーを返します。
@@ -61,37 +59,7 @@ func (c *Client) GenerateWithAttachments(ctx context.Context, modelName string, 
 	if err != nil {
 		return nil, err
 	}
-	return c.GenerateWithParts(ctx, modelName, parts, opts)
-}
-
-// GenerateWithAttachmentsStream は、テキストプロンプトとバイナリ添付から
-// ストリーミングでコンテンツを生成します。
-//
-// GenerateWithPartsStream の genai を伴わない入口です。添付付きの生成を
-// ストリーミングで受け取りたい場合、これが無いと呼び出し側が Part を組み立てる
-// ためだけに genai SDK を import することになります。
-//
-// 入力の扱いと検証は GenerateWithAttachments と同じで、ストリーム開始後の
-// エラーの扱いは GenerateWithPartsStream と同じです。
-func (c *Client) GenerateWithAttachmentsStream(ctx context.Context, modelName string, prompt string, attachments []Attachment, opts GenerateOptions) (iter.Seq2[*Response, error], error) {
-	parts, err := attachmentParts(prompt, attachments)
-	if err != nil {
-		return nil, err
-	}
-	return c.GenerateWithPartsStream(ctx, modelName, parts, opts)
-}
-
-// CountTokensWithAttachments は、テキストプロンプトとバイナリ添付のトークン数を計測します。
-//
-// CountTokensWithParts の genai を伴わない入口です。画像や音声はテキストより
-// トークン数が読みにくく、送る前に測りたいのはむしろこちらなので、添付から直接
-// 測れるようにしています。
-func (c *Client) CountTokensWithAttachments(ctx context.Context, modelName string, prompt string, attachments []Attachment) (int32, error) {
-	parts, err := attachmentParts(prompt, attachments)
-	if err != nil {
-		return 0, err
-	}
-	return c.CountTokensWithParts(ctx, modelName, parts)
+	return c.generateParts(ctx, modelName, parts, opts)
 }
 
 // attachmentParts は、プロンプトと添付を genai の Part スライスへ変換します。

@@ -3,6 +3,7 @@ package gemini
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -12,11 +13,11 @@ import (
 
 var (
 	// ErrConfigRequired は、APIKey と ProjectID/LocationID のいずれも設定されていない場合に返されます。
-	ErrConfigRequired = errors.New("APIKey または ProjectID/LocationID のいずれかが必須です")
+	ErrConfigRequired = errors.New("gemini: either APIKey or ProjectID/LocationID is required")
 	// ErrExclusiveConfig は、ProjectID/LocationID と APIKey が同時に設定された場合に返されます。
-	ErrExclusiveConfig = errors.New("ProjectID/LocationID と APIKey は排他的に設定してください")
+	ErrExclusiveConfig = errors.New("gemini: ProjectID/LocationID and APIKey are mutually exclusive")
 	// ErrIncompleteVertexConfig は、ProjectID と LocationID の一方のみが設定された場合に返されます。
-	ErrIncompleteVertexConfig = errors.New("vertex AIを使用する場合、ProjectIDとLocationIDの両方を設定してください")
+	ErrIncompleteVertexConfig = errors.New("gemini: Vertex AI requires both ProjectID and LocationID")
 )
 
 // Config は初期化用の設定です。
@@ -31,6 +32,21 @@ type Config struct {
 	MaxDelay            time.Duration
 	FilePollingInterval time.Duration
 	FilePollingTimeout  time.Duration
+
+	// RequestTimeout は、生成呼び出し1回（リトライを含む）の上限時間です。
+	// 0 は無制限で、呼び出し側の context の期限にのみ従います。
+	// File API のアップロード待ちとポーリングには適用されません
+	// （それぞれ FilePollingTimeout と veo 側の設定が受け持ちます）。
+	RequestTimeout time.Duration
+
+	// AsyncCleanupTimeout は、アップロード後処理の失敗時にバックグラウンドで行う
+	// ファイル削除の上限時間です。0 はデフォルト（15秒）です。
+	AsyncCleanupTimeout time.Duration
+
+	// Logger は、このクライアントが出すログの出力先です。nil の場合は
+	// slog.Default() を使います。ジョブ ID などの属性を付けたロガーを渡すと、
+	// ライブラリ内部のログにもその属性が乗ります。
+	Logger *slog.Logger
 
 	// HTTPClient は genai SDK が使用する HTTP クライアントを差し替えます。
 	// nil の場合は SDK のデフォルトが使われます。
@@ -194,4 +210,15 @@ func (c Config) getFilePollingInterval() time.Duration {
 
 func (c Config) getFilePollingTimeout() time.Duration {
 	return orDefault(c.FilePollingTimeout, PollingTimeout)
+}
+
+func (c Config) getAsyncCleanupTimeout() time.Duration {
+	return orDefault(c.AsyncCleanupTimeout, AsyncCleanupTimeout)
+}
+
+func (c Config) getLogger() *slog.Logger {
+	if c.Logger != nil {
+		return c.Logger
+	}
+	return slog.Default()
 }

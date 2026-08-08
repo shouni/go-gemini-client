@@ -1,6 +1,9 @@
 package veo
 
-import "time"
+import (
+	"log/slog"
+	"time"
+)
 
 // Option は Client の設定を適用する関数型です。
 // 不正な値（ゼロ以下）は「指定なし」として無視し、既定値のままにします。
@@ -32,6 +35,17 @@ func WithMaxPollErrors(n int) Option {
 	return func(c *Client) {
 		if n > 0 {
 			c.maxPollErrors = n
+		}
+	}
+}
+
+// WithLogger は、このクライアントが出すログの出力先を設定します。
+// 未指定（または nil）の場合は slog.Default() を使います。ジョブ ID などの属性を
+// 付けたロガーを渡すと、ポーリングの警告ログにもその属性が乗ります。
+func WithLogger(logger *slog.Logger) Option {
+	return func(c *Client) {
+		if logger != nil {
+			c.logger = logger
 		}
 	}
 }

@@ -37,6 +37,7 @@ type Client struct {
 	pollInterval  time.Duration
 	pollTimeout   time.Duration
 	maxPollErrors int
+	logger        *slog.Logger
 }
 
 // New は、動画生成クライアントを注入して Client を初期化します。
@@ -54,6 +55,7 @@ func New(generator gemini.VideoGenerator, opts ...Option) (*Client, error) {
 		pollInterval:  DefaultPollInterval,
 		pollTimeout:   DefaultPollTimeout,
 		maxPollErrors: DefaultMaxPollErrors,
+		logger:        slog.Default(),
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -111,7 +113,7 @@ func (c *Client) start(ctx context.Context, modelName string, req Request) (*gem
 	if op == nil {
 		return nil, fmt.Errorf("veo: %w", gemini.ErrEmptyResponse)
 	}
-	slog.InfoContext(ctx, "動画生成オペレーションを開始しました", "operation", op.Name, "model", modelName)
+	c.logger.InfoContext(ctx, "動画生成オペレーションを開始しました", "operation", op.Name, "model", modelName)
 	return op, nil
 }
 
@@ -120,6 +122,10 @@ func (c *Client) start(ctx context.Context, modelName string, req Request) (*gem
 // Generate から分けているのは、投函と完了待ちを別のプロセス・別の実行で行える
 // ようにするためです（実行時間に上限のあるジョブ基盤で、投函だけ済ませて一旦戻り、
 // 次の実行で名前を渡して待ちを再開する、といった使い方ができます）。
+//
+// 最初の問い合わせは間隔を待たずに直ちに行います。別実行からの再開では
+// オペレーションが既に完了していることが多く、そこで 1 interval 分（既定 10 秒）
+// 待ってから確認するのは純粋な死に時間になるためです。
 //
 // 1回ごとの問い合わせにはリトライを掛けません。一時的な失敗はこのループが
 // maxPollErrors 回まで受け流し、それを超えた時点で ErrPollFailed として打ち切ります
@@ -137,32 +143,30 @@ func (c *Client) Wait(ctx context.Context, operationName string) (*Result, error
 
 	consecutiveErrors := 0
 	for {
-		select {
-		case <-waitCtx.Done():
-			return nil, c.waitDeadlineError(ctx, operationName, waitCtx.Err())
-		case <-ticker.C:
-		}
-
 		op, err := c.generator.PollVideo(waitCtx, operationName)
-		if err != nil {
-			// 待ち時間の上限に達したことによる失敗は「一時的な失敗」ではないので
-			// 回数に数えず、次のループで打ち切り理由をそのまま返す。
-			if waitCtx.Err() != nil {
-				continue
-			}
+		switch {
+		case err != nil && waitCtx.Err() != nil:
+			// 待ち時間の上限に達したことによる失敗は「一時的な失敗」ではない。
+			return nil, c.waitDeadlineError(ctx, operationName, waitCtx.Err())
+		case err != nil:
 			consecutiveErrors++
 			if consecutiveErrors >= c.maxPollErrors {
 				return nil, fmt.Errorf("%w: オペレーション %q の確認が %d 回連続で失敗しました: %w",
 					ErrPollFailed, operationName, consecutiveErrors, err)
 			}
-			slog.WarnContext(ctx, "動画生成の状況確認に失敗しました。再確認します",
+			c.logger.WarnContext(ctx, "動画生成の状況確認に失敗しました。再確認します",
 				"operation", operationName, "consecutive_errors", consecutiveErrors, "error", err)
-			continue
+		default:
+			consecutiveErrors = 0
+			if op.Done {
+				return resultFrom(op)
+			}
 		}
 
-		consecutiveErrors = 0
-		if op.Done {
-			return resultFrom(op)
+		select {
+		case <-waitCtx.Done():
+			return nil, c.waitDeadlineError(ctx, operationName, waitCtx.Err())
+		case <-ticker.C:
 		}
 	}
 }

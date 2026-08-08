@@ -209,7 +209,7 @@ func TestCloneMusicRecipeDeepCopiesPointerFields(t *testing.T) {
 		AIModels: AIModels{Seed: &seed},
 	}
 
-	cloned := cloneMusicRecipe(src)
+	cloned := src.Clone()
 	require.NotNil(t, cloned)
 	require.NotNil(t, cloned.Lyrics)
 	require.NotNil(t, cloned.Seed)

@@ -131,16 +131,9 @@ fmt.Println(resp.Text)
 - `Data` を送る場合 `MIMEType` は必須、`URI` を参照する場合は任意（省略するとサーバー側の判定に委ねます）
 - どちらも空の要素は読み飛ばされます。参照画像を「あれば渡す」形で組み立てる呼び出し側が、空要素の除去を毎回書かずに済みます
 - プロンプトが空でも添付があれば送信できます（音声だけを渡して解析させる用途）
-- 添付が無いテキスト生成でも使えます。`attachments` に `nil` を渡せば「プロンプト + `GenerateOptions`」の入口になり、`GenerateContent`（オプション無し）と `GenerateWithParts`（genai 依存）の間を埋めます
+- 添付が無いテキスト生成でも使えます。`attachments` に `nil` を渡せば「プロンプト + `GenerateOptions`」の入口になり、オプション無しの `GenerateContent` を補完します
 
-プロンプトは添付より前に置かれます。GCS URI とインラインデータを任意の順序で混在させたい、System instruction を Part 単位で組み立てたい、といった場合は `GenerateWithParts` で公式 SDK の `genai.Part` を直接渡してください。
-
-```go
-resp, err := client.GenerateWithParts(ctx, "gemini-3.6-flash", []*genai.Part{
-	{FileData: &genai.FileData{URI: "gs://my-bucket/sample.jpg", MIMEType: "image/jpeg"}},
-	{Text: "この画像の内容を日本語で要約してください"},
-}, gemini.GenerateOptions{})
-```
+プロンプトは添付より前に置かれます。genai SDK の `genai.Part` を直接受け取る公開 API は意図的にありません。SDK の型を公開面へ漏らすと、利用側が genai を import する理由が復活してしまうためです。
 
 ---
 
@@ -148,19 +141,19 @@ resp, err := client.GenerateWithParts(ctx, "gemini-3.6-flash", []*genai.Part{
 
 `ResponseMIMEType` に `image/*` または `audio/*` を指定すると、レスポンスモダリティが自動設定されます。Inline data は `Response.Images` または `Response.Audios` に格納されます。
 
-MIME type も必要な場合は `Response.Attachments` を使います。`Images` / `Audios` はバイト列だけなので、保存時の拡張子や Content-Type を決めるには本来 `RawResponse` を辿る必要がありました。`Attachments` は返却順のまま `gemini.Attachment`（MIME type + バイト列）で受け取れます。
+MIME type も必要な場合は `Response.Attachments` を使います。`Images` / `Audios` はバイト列だけなので、保存時の拡張子や Content-Type を決める必要がある場合は、返却順のまま `gemini.Attachment`（MIME type + バイト列）で受け取れる `Attachments` を使ってください。
 
 ```go
 seed := int64(1234)
 
-resp, err := client.GenerateWithParts(ctx, "gemini-3.1-flash-image", []*genai.Part{
-	{Text: "青い招き猫のステッカー画像を生成して"},
-}, gemini.GenerateOptions{
-	ResponseMIMEType: "image/png",
-	AspectRatio:      "1:1",
-	ImageSize:        "1K",
-	Seed:             &seed,
-})
+resp, err := client.GenerateWithAttachments(ctx, "gemini-3.1-flash-image",
+	"青い招き猫のステッカー画像を生成して", nil,
+	gemini.GenerateOptions{
+		ResponseMIMEType: "image/png",
+		AspectRatio:      "1:1",
+		ImageSize:        "1K",
+		Seed:             &seed,
+	})
 if err != nil {
 	return err
 }
@@ -184,7 +177,6 @@ for _, attachment := range resp.Attachments {
 | `Attachments` | インラインデータを MIME type 付きで返却順に保持します（`Images` / `Audios` の上位集合）。 |
 | `Thoughts` | 思考サマリ。`IncludeThoughts` が true でモデルが返した場合のみ設定され、`Text` には含まれません。 |
 | `Usage` | トークン使用量（`*gemini.TokenUsage`）。`PromptTokenCount` / `CandidatesTokenCount` / `TotalTokenCount` に加え、課金対象の `ThoughtsTokenCount` を持ちます。 |
-| `RawResponse` | genai SDK の生レスポンス。上記で足りない場合の逃げ道です。 |
 
 ---
 
@@ -207,16 +199,192 @@ if err != nil {
 }
 defer client.DeleteFile(context.Background(), uploaded.Name)
 
-resp, err := client.GenerateWithParts(ctx, "gemini-3.6-flash", []*genai.Part{
-	{
-		FileData: &genai.FileData{
-			URI:      uploaded.URI,
-			MIMEType: "video/mp4",
-		},
-	},
-	{Text: "この動画を要約してください"},
-}, gemini.GenerateOptions{})
+resp, err := client.GenerateWithAttachments(ctx, "gemini-3.6-flash",
+	"この動画を要約してください",
+	[]gemini.Attachment{{URI: uploaded.URI, MIMEType: "video/mp4"}},
+	gemini.GenerateOptions{})
 ```
+
+File API の呼び出しにも `Config` のリトライ設定が効きます。
+
+- **Upload** は再送に備えて入力を最初に全量メモリへ読み込みます（画像・音声などの添付が対象で、ストリーミングが必要なサイズは想定していません）
+- **Delete** は対象が既に存在しない場合（前回の削除が実は成功していた場合など）を成功として扱います
+- **Active 化待ちのステータス確認**にはリトライを掛けず、一時的な失敗をループ側で 5 回まで受け流します（ポーリングの内部でバックオフを効かせると間隔とタイムアウトの意味が失われるためです）
+- 失敗時のバックグラウンド削除の上限時間は `Config.AsyncCleanupTimeout`（既定 15 秒）で調整できます
+
+---
+
+## 🎬 Veo 動画生成 (`veo`)
+
+- **長時間実行オペレーションの完走**: 投函から完了までのポーリング、タイムアウト、一時的な失敗の許容をまとめて扱います。投函 (`Submit`) と完了待ち (`Wait`) は別の実行に分けられます。
+- **入力の事前検証**: Veo が併用できない入力（video と image など）を送信前に弾きます。
+- **genai 非依存**: `gemini.VideoGenerator` の 2 メソッドを注入するだけなので、テストは SDK も認証も不要です。
+
+---
+
+## 🚀 クイックスタート
+
+### インストール
+
+```sh
+go get github.com/shouni/go-gemini-client
+```
+
+### 1. Gemini API モード (API Key 方式)
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+
+	"github.com/shouni/go-gemini-client/gemini"
+)
+
+func main() {
+	ctx := context.Background()
+
+	client, err := gemini.NewClient(ctx, gemini.Config{
+		APIKey: "YOUR_GEMINI_API_KEY",
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	resp, err := client.GenerateContent(ctx, "gemini-3.6-flash", "Goで短い俳句を書いて")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println(resp.Text)
+}
+```
+
+### 2. Vertex AI モード (Cloud Run / GCS 連携)
+
+```go
+client, err := gemini.NewClient(ctx, gemini.Config{
+	ProjectID:  "your-google-cloud-project-id",
+	LocationID: "asia-northeast1",
+})
+if err != nil {
+	return err
+}
+```
+
+Vertex AI モードでは、Google Cloud 側の認証情報を利用します。Cloud Run などの環境では API Key をアプリケーションに持たせずに運用できます。
+
+---
+
+## 🧩 マルチモーダル生成
+
+`GenerateWithAttachments` は、テキストと添付（画像・音声・PDF など）を genai SDK の型を使わずに渡せる入口です。`gemini.Attachment` はバイト列と URI 参照のどちらも表現できます。
+
+```go
+resp, err := client.GenerateWithAttachments(ctx, "gemini-3.6-flash",
+	"この画像の内容を日本語で要約してください",
+	[]gemini.Attachment{
+		// Vertex AI では gs:// を直接参照でき、File API の files/... も同じ形で渡せます。
+		{URI: "gs://my-bucket/sample.jpg", MIMEType: "image/jpeg"},
+		// バイト列を送る場合は Data を使います（URI とは排他）。
+		// {MIMEType: "image/png", Data: pngBytes},
+	},
+	gemini.GenerateOptions{SystemPrompt: "簡潔に回答してください。"})
+if err != nil {
+	return err
+}
+
+fmt.Println(resp.Text)
+```
+
+添付の扱いは次のとおりです。
+
+- `Data` と `URI` は排他で、両方設定すると `ErrInvalidAttachment` になります
+- `Data` を送る場合 `MIMEType` は必須、`URI` を参照する場合は任意（省略するとサーバー側の判定に委ねます）
+- どちらも空の要素は読み飛ばされます。参照画像を「あれば渡す」形で組み立てる呼び出し側が、空要素の除去を毎回書かずに済みます
+- プロンプトが空でも添付があれば送信できます（音声だけを渡して解析させる用途）
+- 添付が無いテキスト生成でも使えます。`attachments` に `nil` を渡せば「プロンプト + `GenerateOptions`」の入口になり、オプション無しの `GenerateContent` を補完します
+
+プロンプトは添付より前に置かれます。genai SDK の `genai.Part` を直接受け取る公開 API は意図的にありません。SDK の型を公開面へ漏らすと、利用側が genai を import する理由が復活してしまうためです。
+
+---
+
+## 🖼️ 画像・音声レスポンス
+
+`ResponseMIMEType` に `image/*` または `audio/*` を指定すると、レスポンスモダリティが自動設定されます。Inline data は `Response.Images` または `Response.Audios` に格納されます。
+
+MIME type も必要な場合は `Response.Attachments` を使います。`Images` / `Audios` はバイト列だけなので、保存時の拡張子や Content-Type を決める必要がある場合は、返却順のまま `gemini.Attachment`（MIME type + バイト列）で受け取れる `Attachments` を使ってください。
+
+```go
+seed := int64(1234)
+
+resp, err := client.GenerateWithAttachments(ctx, "gemini-3.1-flash-image",
+	"青い招き猫のステッカー画像を生成して", nil,
+	gemini.GenerateOptions{
+		ResponseMIMEType: "image/png",
+		AspectRatio:      "1:1",
+		ImageSize:        "1K",
+		Seed:             &seed,
+	})
+if err != nil {
+	return err
+}
+
+if len(resp.Images) > 0 {
+	// resp.Images[0] contains image bytes.
+}
+
+for _, attachment := range resp.Attachments {
+	// attachment.MIMEType で保存時の拡張子や Content-Type を決められます。
+	_ = attachment
+}
+```
+
+### `gemini.Response` の中身
+
+| フィールド | 内容 |
+| --- | --- |
+| `Text` | 本文。思考パートを除く全テキストパートの連結です。 |
+| `Images` / `Audios` | インラインデータのバイト列を MIME type で振り分けたものです。 |
+| `Attachments` | インラインデータを MIME type 付きで返却順に保持します（`Images` / `Audios` の上位集合）。 |
+| `Thoughts` | 思考サマリ。`IncludeThoughts` が true でモデルが返した場合のみ設定され、`Text` には含まれません。 |
+| `Usage` | トークン使用量（`*gemini.TokenUsage`）。`PromptTokenCount` / `CandidatesTokenCount` / `TotalTokenCount` に加え、課金対象の `ThoughtsTokenCount` を持ちます。 |
+
+---
+
+## 📤 File API
+
+Gemini API の File API を使う場合は、アップロード後にファイルが `Active` になるまで自動で待機します。
+
+`UploadFile` は `gemini.UploadedFile{URI, Name}` を返します。`URI` は生成リクエストから参照する値、`Name` は `DeleteFile` に渡す識別子で、用途が違うため構造体で返しています。
+
+```go
+f, err := os.Open("movie.mp4")
+if err != nil {
+	return err
+}
+defer f.Close()
+
+uploaded, err := client.UploadFile(ctx, f, "video/mp4", "movie.mp4")
+if err != nil {
+	return err
+}
+defer client.DeleteFile(context.Background(), uploaded.Name)
+
+resp, err := client.GenerateWithAttachments(ctx, "gemini-3.6-flash",
+	"この動画を要約してください",
+	[]gemini.Attachment{{URI: uploaded.URI, MIMEType: "video/mp4"}},
+	gemini.GenerateOptions{})
+```
+
+File API の呼び出しにも `Config` のリトライ設定が効きます。
+
+- **Upload** は再送に備えて入力を最初に全量メモリへ読み込みます（画像・音声などの添付が対象で、ストリーミングが必要なサイズは想定していません）
+- **Delete** は対象が既に存在しない場合（前回の削除が実は成功していた場合など）を成功として扱います
+- **Active 化待ちのステータス確認**にはリトライを掛けず、一時的な失敗をループ側で 5 回まで受け流します（ポーリングの内部でバックオフを効かせると間隔とタイムアウトの意味が失われるためです）
+- 失敗時のバックグラウンド削除の上限時間は `Config.AsyncCleanupTimeout`（既定 15 秒）で調整できます
 
 ---
 
@@ -339,7 +507,11 @@ Veo は入力系統を併用できません。`StartVideo` は API が確実に�
 
 一方、**投函（`StartVideo`）には `Config` のリトライ設定が効きます**。レート制限や一時的なサーバーエラーで 1 本分の生成が落ちるのを防ぐためです。
 
+`Wait` は最初の問い合わせを間隔待ちなしで直ちに行います。別実行からの再開ではオペレーションが既に完了していることが多く、確認前に 1 interval 分（既定 10 秒）待つのは純粋な死に時間になるためです。
+
 `Generate` は投函と完了待ちをまとめて行いますが、`Submit` と `Wait` に分けても呼べます。実行時間に上限のあるジョブ基盤で、投函だけ済ませて一旦戻り、次の実行でオペレーション名を渡して待ちを再開する、といった使い方ができます。
+
+ログの出力先は `veo.WithLogger(*slog.Logger)` で差し替えられます（未指定は `slog.Default()`）。
 
 ```go
 // 実行 1: 投函してオペレーション名を保存する（完了は待たない）
@@ -388,6 +560,9 @@ req.ModifyRequestBody = func(body map[string]any) map[string]any {
 | `MaxDelay` | リトライ待機時間の上限 | `120s` |
 | `FilePollingInterval` | File API の状態確認間隔 | `2s` |
 | `FilePollingTimeout` | File API の状態確認タイムアウト | `60s` |
+| `RequestTimeout` | 生成呼び出し 1 回（リトライ含む）の上限時間。File API とポーリングには適用されません | なし（無制限） |
+| `AsyncCleanupTimeout` | アップロード後処理失敗時のバックグラウンド削除の上限時間 | `15s` |
+| `Logger` | ライブラリ内部ログの出力先（`*slog.Logger`） | `slog.Default()` |
 | `HTTPClient` | genai SDK が使う HTTP クライアント。タイムアウトやプロキシ、SSRF 対策済みクライアント（`securenet.NewSafeHTTPClient` 等）の注入に使います | SDK 既定 |
 | `OnRetry` | リトライ直前に呼ばれる通知関数 | なし |
 
@@ -471,7 +646,7 @@ case errors.Is(err, gemini.ErrEmptyResponse):
 `ResponseSchema` + `ResponseMIMEType: "application/json"` による構造化出力（constrained decoding）を使っても、モデルが完結した JSON の後に余分な閉じ括弧や説明テキストを継ぎ足すことが実際にあります。`json.Unmarshal` の前段で `gemini.CleanJSONResponse(raw)` を通すと、こうした末尾ノイズを除去・補正できます。トップレベルが配列（`[...]`）のスキーマにも対応しています。
 
 ```go
-resp, err := client.GenerateWithParts(ctx, model, parts, opts)
+resp, err := client.GenerateWithAttachments(ctx, model, prompt, nil, opts)
 // ...
 var out MyStruct
 jsonStr := gemini.CleanJSONResponse(resp.Text)
@@ -503,6 +678,8 @@ if err := json.Unmarshal([]byte(jsonStr), &out); err != nil {
 
 `ErrBlocked` / `ErrEmptyResponse` は `*APIResponseError` として返り、`Unwrap` がこれらのセンチネルを返すため `errors.Is` で分類できます。どちらも再試行では解決しないため、リトライ対象外です。
 
+センチネルの文言は英語 + パッケージ名プレフィックス（`gemini:` / `veo:` / `lyria:`）で統一しています。深いラップの中に埋まってもどのパッケージ由来か判別でき、人間向けの文脈はラップする側が日本語で補う方針です。
+
 `veo` パッケージは以下を公開しています。
 
 - `veo.ErrGeneratorRequired`: `veo.New` に nil の生成クライアントを渡した場合。
@@ -510,28 +687,29 @@ if err := json.Unmarshal([]byte(jsonStr), &out); err != nil {
 - `veo.ErrNoVideoGenerated`: 成功で完了したのに動画が 1 本も返らなかった場合（安全性ポリシーによる除外が典型）。
 - `veo.ErrPollFailed`: 生成状況の確認が連続して失敗し、完了を待てなくなった場合。
 
+`lyria` パッケージは以下を公開しています。
+
+- `lyria.ErrWorkflowConfig`: `lyria.New` に必要な依存やモデル名が欠けている場合。
+- `lyria.ErrNilInput`: 生成に必要な入力（収集コンテンツ・歌詞・レシピ）が nil の場合。
+- `lyria.ErrEmptyLyrics`: 生成された歌詞ドラフトの本文が空だった場合。
+- `lyria.ErrNoAudio`: Lyria の呼び出しは成功したのに音声データが返らなかった場合。
+- `lyria.ErrInvalidResponse`: モデル出力が期待する JSON として解釈できなかった場合。再生成で解決することがあります。
+
 ---
 
 ## 🔌 インターフェース
 
-`*gemini.Client` はこれらをすべて満たします。利用側は必要な範囲だけに依存すると、モックが小さくなります。
+`*gemini.Client` はこれらをすべて満たします。利用側は必要な範囲だけに依存すると、モックが小さくなります。いずれのインターフェースも genai SDK の型をシグネチャに含みません。
 
-| インターフェース | メソッド | genai 型 |
-| --- | --- | --- |
-| `ContentGenerator` | `GenerateContent` | 含まない |
-| `MultimodalGenerator` | `GenerateWithAttachments` | 含まない |
-| `BackendInspector` | `IsVertexAI` | 含まない |
-| `FileManager` | `UploadFile` / `DeleteFile` | 含まない |
-| `MultimodalModel` | 上記 3 つ（生成・ファイル管理・バックエンド判定）の集合 | 含まない |
-| `MultimodalStreamGenerator` | `GenerateContentStream` / `GenerateWithAttachmentsStream` | 含まない |
-| `MultimodalTokenCounter` | `CountTokens` / `CountTokensWithAttachments` | 含まない |
-| `VideoGenerator` | `StartVideo` / `PollVideo` | 含まない |
-| `Generator` | `GenerateWithParts` + `IsVertexAI` | **含む** |
-| `GenerativeModel` | `Generator` + `FileManager` | **含む** |
-| `StreamGenerator` | `GenerateContentStream` / `GenerateWithPartsStream` | **含む** |
-| `TokenCounter` | `CountTokens` / `CountTokensWithParts` | **含む** |
+| インターフェース | メソッド |
+| --- | --- |
+| `Generator` | `GenerateWithAttachments` |
+| `BackendInspector` | `IsVertexAI` |
+| `FileManager` | `UploadFile` / `DeleteFile` |
+| `Model` | 上記 3 つ（生成・ファイル管理・バックエンド判定）の集合 |
+| `VideoGenerator` | `StartVideo` / `PollVideo` |
 
-`Generator` 系は `genai.Part` をシグネチャに持つため、実装・モックする側も genai SDK を参照することになります。Part を直接組み立てる必要がなければ `MultimodalGenerator` / `MultimodalModel` を選んでください。
+生成だけが必要なら 1 メソッドの `Generator` に、参照画像をアップロードしてから添付として渡すような利用側は `Model` に依存してください。
 
 ---
 
@@ -540,8 +718,23 @@ if err := json.Unmarshal([]byte(jsonStr), &out); err != nil {
 | パッケージ | 役割 |
 | --- | --- |
 | `github.com/shouni/go-gemini-client/gemini` | Gemini / Vertex AI クライアント、リトライ、File API、レスポンス抽出。 |
-| `github.com/shouni/go-gemini-client/lyria` | 歌詞生成 → 作曲レシピ生成 → Lyria 音声生成の 3 段。`lyria.New` は `gemini.MultimodalGenerator` を受け取ります。段の間に品質ゲートを挟むのは利用側の判断のため、一括実行の入口は用意していません。 |
+| `github.com/shouni/go-gemini-client/music` | 楽曲構成のデータ型（`music.Recipe` / `Section` / `LyricsDraft` / `AIModels`）。依存を持たない葉パッケージで、型だけが欲しい下流はこれだけを import できます。 |
+| `github.com/shouni/go-gemini-client/lyria` | 歌詞生成 → 作曲レシピ生成 → Lyria 音声生成の 3 段。`lyria.New` は `gemini.Generator` を受け取ります。段の間に品質ゲートを挟むのは利用側の判断のため、一括実行の入口は用意していません。`lyria.MusicRecipe` などの型名は `music` パッケージの別名として残っています。 |
 | `github.com/shouni/go-gemini-client/veo` | Veo 動画生成の投函と完了待ち。`veo.New` は `gemini.VideoGenerator` を受け取ります。 |
+
+### 楽曲型 (`music`) と lyria ワークフロー
+
+`music.Recipe` は楽曲の構成（セクション・歌詞・使用モデル・seed）を表す、このエコシステムで最も広く共有される型です。JSON タグは snake_case で、保存済みレシピ JSON との互換性を保っています。
+
+```go
+import "github.com/shouni/go-gemini-client/music"
+
+var r music.Recipe
+r.Sections = []music.Section{{Name: "Verse", Duration: 30}}
+clone := r.Clone() // スライスやポインタも複製する深いコピー
+```
+
+ワークフロー（`lyria.Workflow`）は `GenerateLyrics` → `Compose` → `GenerateAudio` の 3 段を個別のメソッドとして公開します。段の間に構造検証などの品質ゲートを挟めるようにするためで、一括実行の入口は意図的にありません。
 
 ---
 

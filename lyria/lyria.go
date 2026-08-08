@@ -2,7 +2,7 @@ package lyria
 
 import (
 	"context"
-	"errors"
+	"fmt"
 
 	"github.com/shouni/go-gemini-client/gemini"
 	"golang.org/x/time/rate"
@@ -25,22 +25,22 @@ type Workflow struct {
 }
 
 // New は、指定された構成を使用して新しい Workflow を初期化して返します。
-func New(aiClient gemini.MultimodalGenerator, promptGen TextPromptGenerator, audioPromptBuilder AudioPromptBuilder, overrides ...Option) (*Workflow, error) {
+func New(aiClient gemini.Generator, promptGen TextPromptGenerator, audioPromptBuilder AudioPromptBuilder, overrides ...Option) (*Workflow, error) {
 	opts := applyOptions(overrides...)
 	if aiClient == nil {
-		return nil, errors.New("aiClient is required")
+		return nil, fmt.Errorf("%w: aiClient is required", ErrWorkflowConfig)
 	}
 	if promptGen == nil {
-		return nil, errors.New("promptGen is required")
+		return nil, fmt.Errorf("%w: promptGen is required", ErrWorkflowConfig)
 	}
 	if audioPromptBuilder == nil {
-		return nil, errors.New("audioPromptBuilder is required")
+		return nil, fmt.Errorf("%w: audioPromptBuilder is required", ErrWorkflowConfig)
 	}
 	if opts.geminiModel == "" {
-		return nil, errors.New("GeminiModel is required but not set")
+		return nil, fmt.Errorf("%w: GeminiModel is required but not set", ErrWorkflowConfig)
 	}
 	if opts.lyriaModel == "" {
-		return nil, errors.New("LyriaModel is required but not set")
+		return nil, fmt.Errorf("%w: LyriaModel is required but not set", ErrWorkflowConfig)
 	}
 
 	limiter := rate.NewLimiter(rate.Every(opts.rateInterval), 1)
