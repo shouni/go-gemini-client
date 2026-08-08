@@ -14,7 +14,7 @@ import (
 
 // lyriaAudioGenerator は MusicRecipe を Lyria に渡し、音声バイナリを生成します。
 type lyriaAudioGenerator struct {
-	aiClient          gemini.MultimodalGenerator
+	aiClient          gemini.Generator
 	promptBuilder     AudioPromptBuilder
 	converter         ReadingConverter
 	defaultLyriaModel string
@@ -26,7 +26,7 @@ type lyriaAudioGenerator struct {
 // GenerateAudio は MusicRecipe 全体を 1 回の Lyria 呼び出しで音声化します。
 func (g *lyriaAudioGenerator) GenerateAudio(ctx context.Context, recipe *MusicRecipe, images []ImagePayload) ([]byte, error) {
 	if recipe == nil {
-		return nil, fmt.Errorf("recipe cannot be nil")
+		return nil, fmt.Errorf("%w: music recipe", ErrNilInput)
 	}
 
 	targetModel := g.defaultLyriaModel
@@ -58,7 +58,7 @@ func (g *lyriaAudioGenerator) GenerateAudio(ctx context.Context, recipe *MusicRe
 			return nil, fmt.Errorf("lyria generation failed (model: %s): %w", targetModel, err)
 		}
 		if resp == nil || len(resp.Audios) == 0 {
-			return nil, fmt.Errorf("no audio data received from Lyria")
+			return nil, fmt.Errorf("%w (model: %s)", ErrNoAudio, targetModel)
 		}
 
 		return resp.Audios[0], nil

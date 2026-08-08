@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"hash"
 	"strconv"
 	"time"
 
@@ -17,14 +18,21 @@ import (
 // 適用されます。WithExecTimeout で変更できます。
 const defaultSingleflightExecTimeout = 5 * time.Minute
 
+// writeHashPart は長さプレフィックス付きでハッシュへ部品を書き込みます。
+// 長さを先に書くのは "ab"+"c" と "a"+"bc" のような連結の衝突を防ぐためで、
+// キーを組み立てる関数はすべてこの1つの枠組みを共有します。
+func writeHashPart(h hash.Hash, part []byte) {
+	var lengthBuf [8]byte
+	binary.LittleEndian.PutUint64(lengthBuf[:], uint64(len(part)))
+	h.Write(lengthBuf[:])
+	h.Write(part)
+}
+
 // singleflightKey は namespace と可変長の部品から衝突しにくい singleflight 用キーを作ります。
 func singleflightKey(namespace string, parts ...string) string {
 	hasher := sha256.New()
 	for _, part := range parts {
-		hasher.Write([]byte(strconv.Itoa(len(part))))
-		hasher.Write([]byte{0})
-		hasher.Write([]byte(part))
-		hasher.Write([]byte{0})
+		writeHashPart(hasher, []byte(part))
 	}
 
 	return namespace + ":" + hex.EncodeToString(hasher.Sum(nil))
@@ -41,19 +49,13 @@ func singleflightSeedKey(seed *int64) string {
 // calculateImagesHash は画像ペイロードの内容から singleflight 用のキー部品を作ります。
 func calculateImagesHash(images []ImagePayload) string {
 	hasher := sha256.New()
-	lengthBuf := make([]byte, 8)
 	for _, image := range images {
 		if len(image.Data) == 0 {
 			continue
 		}
 
-		mimeType := image.MIMEType
-		hasher.Write([]byte(mimeType))
-		hasher.Write([]byte{0})
-		binary.LittleEndian.PutUint64(lengthBuf, uint64(len(image.Data)))
-		hasher.Write(lengthBuf)
-		hasher.Write(image.Data)
-		hasher.Write([]byte{0})
+		writeHashPart(hasher, []byte(image.MIMEType))
+		writeHashPart(hasher, image.Data)
 	}
 
 	return "images:" + hex.EncodeToString(hasher.Sum(nil))
@@ -93,37 +95,6 @@ func doSingleflight[T any](ctx context.Context, group *singleflight.Group, key s
 		}
 		return value, nil
 	}
-}
-
-// cloneLyricsDraft は LyricsDraft を呼び出し元が安全に変更できるように複製します。
-func cloneLyricsDraft(src *LyricsDraft) *LyricsDraft {
-	if src == nil {
-		return nil
-	}
-
-	dst := *src
-	dst.Keywords = append([]string(nil), src.Keywords...)
-	return &dst
-}
-
-// cloneMusicRecipe は MusicRecipe と内部のスライスやポインタを複製します。
-func cloneMusicRecipe(src *MusicRecipe) *MusicRecipe {
-	if src == nil {
-		return nil
-	}
-
-	dst := *src
-	dst.Instruments = append([]string(nil), src.Instruments...)
-	if src.Sections != nil {
-		dst.Sections = make([]MusicSection, len(src.Sections))
-		copy(dst.Sections, src.Sections)
-	}
-	dst.Lyrics = cloneLyricsDraft(src.Lyrics)
-	if src.Seed != nil {
-		v := *src.Seed
-		dst.Seed = &v
-	}
-	return &dst
 }
 
 // cloneBytes はバイト列を呼び出し元が安全に変更できるように複製します。

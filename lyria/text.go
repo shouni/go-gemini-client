@@ -16,7 +16,7 @@ const defaultComposeMode = "default"
 
 // lyriaTextGenerator は Gemini を使った歌詞生成と楽曲レシピ生成をまとめて扱います。
 type lyriaTextGenerator struct {
-	aiClient     gemini.MultimodalGenerator
+	aiClient     gemini.Generator
 	promptGen    TextPromptGenerator
 	defaultModel string
 	limiter      *rate.Limiter // nil はレート制限なし（テストが構造体リテラルで直接構築するため）
@@ -51,18 +51,20 @@ func generateJSON[T any](ctx context.Context, g *lyriaTextGenerator, kind, model
 			return nil, fmt.Errorf("%s generation failed (model: %s): %w", kind, model, err)
 		}
 		if resp == nil {
-			return nil, fmt.Errorf("%s response is nil", kind)
+			return nil, fmt.Errorf("%w: %s response is nil", ErrInvalidResponse, kind)
 		}
 
 		raw := strings.TrimSpace(resp.Text)
 		if raw == "" {
-			return nil, fmt.Errorf("AI returned an empty string for the %s", kind)
+			return nil, fmt.Errorf("%w: AI returned an empty string for the %s", ErrInvalidResponse, kind)
 		}
 
 		jsonStr := gemini.CleanJSONResponse(raw)
 		var out T
 		if err := json.Unmarshal([]byte(jsonStr), &out); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal %s json: %w (raw: %s)", kind, err, jsonStr)
+			// 生出力の全文はログを肥大化させるため、診断に足りる先頭だけを残す。
+			return nil, fmt.Errorf("%w: failed to unmarshal %s json: %w (raw: %s)",
+				ErrInvalidResponse, kind, err, truncateForError(jsonStr))
 		}
 		return &out, nil
 	})
@@ -71,7 +73,7 @@ func generateJSON[T any](ctx context.Context, g *lyriaTextGenerator, kind, model
 // GenerateLyrics は収集済みコンテンツから歌詞ドラフトを生成します。
 func (g *lyriaTextGenerator) GenerateLyrics(ctx context.Context, ai AIModels, input *CollectedContent) (*LyricsDraft, error) {
 	if input == nil {
-		return nil, fmt.Errorf("empty input")
+		return nil, fmt.Errorf("%w: collected content", ErrNilInput)
 	}
 
 	promptText, err := g.promptGen.GenerateLyrics(ai.LyricsMode, input.Prompt)
@@ -84,16 +86,16 @@ func (g *lyriaTextGenerator) GenerateLyrics(ctx context.Context, ai AIModels, in
 		return nil, err
 	}
 	if strings.TrimSpace(lyrics.Lyrics) == "" {
-		return nil, fmt.Errorf("lyrics draft is empty")
+		return nil, ErrEmptyLyrics
 	}
 
-	return cloneLyricsDraft(lyrics), nil
+	return lyrics.Clone(), nil
 }
 
 // Compose は歌詞ドラフトから楽曲レシピを生成します。
 func (g *lyriaTextGenerator) Compose(ctx context.Context, ai AIModels, lyrics *LyricsDraft) (*MusicRecipe, error) {
 	if lyrics == nil {
-		return nil, fmt.Errorf("lyrics cannot be nil")
+		return nil, fmt.Errorf("%w: lyrics draft", ErrNilInput)
 	}
 
 	targetMode := ai.ComposeMode
@@ -112,8 +114,8 @@ func (g *lyriaTextGenerator) Compose(ctx context.Context, ai AIModels, lyrics *L
 	}
 
 	// 呼び出し元固有の情報は共有結果を複製してから付与する。
-	recipe := cloneMusicRecipe(shared)
-	recipe.Lyrics = cloneLyricsDraft(lyrics)
+	recipe := shared.Clone()
+	recipe.Lyrics = lyrics.Clone()
 	recipe.AIModels = ai
 	if ai.Seed != nil {
 		seed := *ai.Seed
