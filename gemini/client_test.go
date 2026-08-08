@@ -3,7 +3,6 @@ package gemini
 import (
 	"context"
 	"errors"
-	"iter"
 	"net/http"
 	"testing"
 	"time"
@@ -33,13 +32,6 @@ type fakeModelClient struct {
 	resp        *genai.GenerateContentResponse
 	err         error
 	errs        []error // 呼び出し順に返すエラー。使い切った後は resp / err に従う
-
-	countTokensResp  *genai.CountTokensResponse
-	countTokensErr   error
-	countTokensCalls int
-
-	streamChunks []*genai.GenerateContentResponse
-	streamErr    error
 }
 
 func (f *fakeModelClient) GenerateContent(_ context.Context, model string, contents []*genai.Content, config *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error) {
@@ -68,35 +60,6 @@ func (f *fakeModelClient) GenerateContent(_ context.Context, model string, conte
 			},
 		},
 	}, nil
-}
-
-func (f *fakeModelClient) GenerateContentStream(_ context.Context, model string, contents []*genai.Content, config *genai.GenerateContentConfig) iter.Seq2[*genai.GenerateContentResponse, error] {
-	f.gotModel = model
-	f.gotConfig = config
-	f.gotContents = contents
-	return func(yield func(*genai.GenerateContentResponse, error) bool) {
-		if f.streamErr != nil {
-			yield(nil, f.streamErr)
-			return
-		}
-		for _, chunk := range f.streamChunks {
-			if !yield(chunk, nil) {
-				return
-			}
-		}
-	}
-}
-
-func (f *fakeModelClient) CountTokens(_ context.Context, model string, _ []*genai.Content, _ *genai.CountTokensConfig) (*genai.CountTokensResponse, error) {
-	f.countTokensCalls++
-	f.gotModel = model
-	if f.countTokensErr != nil {
-		return nil, f.countTokensErr
-	}
-	if f.countTokensResp != nil {
-		return f.countTokensResp, nil
-	}
-	return &genai.CountTokensResponse{TotalTokens: 1}, nil
 }
 
 func TestNewClient(t *testing.T) {
@@ -209,7 +172,7 @@ func TestGenerateContent_Validation(t *testing.T) {
 	})
 }
 
-func TestGenerateWithParts_Validation(t *testing.T) {
+func TestGenerateParts_Validation(t *testing.T) {
 	ctx := context.Background()
 	c := &Client{}
 
@@ -241,9 +204,9 @@ func TestGenerateWithParts_Validation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := c.GenerateWithParts(ctx, tt.modelName, tt.parts, GenerateOptions{})
+			_, err := c.generateParts(ctx, tt.modelName, tt.parts, GenerateOptions{})
 			if !errors.Is(err, tt.wantErr) {
-				t.Fatalf("GenerateWithParts() error = %v, want %v", err, tt.wantErr)
+				t.Fatalf("generateParts() error = %v, want %v", err, tt.wantErr)
 			}
 		})
 	}
@@ -251,18 +214,15 @@ func TestGenerateWithParts_Validation(t *testing.T) {
 
 func TestBuildGenerateConfig_AppliesOptions(t *testing.T) {
 	seed := int64(12345)
-	c := &Client{
-		backend: genai.BackendVertexAI,
-	}
 
-	got, err := c.buildGenerateConfig(GenerateOptions{
+	got, err := buildGenerateConfig(GenerateOptions{
 		SystemPrompt:     "system",
 		ResponseMIMEType: "application/json",
 		AspectRatio:      "16:9",
 		ImageSize:        "1K",
 		Seed:             &seed,
 		PersonGeneration: PersonGenerationAllowAll,
-	})
+	}, true)
 	if err != nil {
 		t.Fatalf("buildGenerateConfig() unexpected error = %v", err)
 	}
@@ -281,8 +241,23 @@ func TestBuildGenerateConfig_AppliesOptions(t *testing.T) {
 	}
 }
 
+func TestBuildGenerateConfig_PersonGenerationSkippedOffVertex(t *testing.T) {
+	got, err := buildGenerateConfig(GenerateOptions{
+		AspectRatio:      "16:9",
+		PersonGeneration: PersonGenerationAllowAll,
+	}, false)
+	if err != nil {
+		t.Fatalf("buildGenerateConfig() unexpected error = %v", err)
+	}
+	if got.ImageConfig == nil {
+		t.Fatal("ImageConfig should still be built for AspectRatio")
+	}
+	if got.ImageConfig.PersonGeneration != "" {
+		t.Fatalf("PersonGeneration = %q, want empty on Gemini API backend", got.ImageConfig.PersonGeneration)
+	}
+}
+
 func TestBuildGenerateConfig_AppliesResponseSchema(t *testing.T) {
-	c := &Client{}
 	schema := &genai.Schema{
 		Type: genai.TypeObject,
 		Properties: map[string]*genai.Schema{
@@ -290,10 +265,10 @@ func TestBuildGenerateConfig_AppliesResponseSchema(t *testing.T) {
 		},
 	}
 
-	got, err := c.buildGenerateConfig(GenerateOptions{
+	got, err := buildGenerateConfig(GenerateOptions{
 		ResponseMIMEType: "application/json",
 		ResponseSchema:   schema,
-	})
+	}, false)
 	if err != nil {
 		t.Fatalf("buildGenerateConfig() unexpected error = %v", err)
 	}
@@ -303,11 +278,9 @@ func TestBuildGenerateConfig_AppliesResponseSchema(t *testing.T) {
 }
 
 func TestBuildGenerateConfig_AudioResponseMIMETypeSetsModalities(t *testing.T) {
-	c := &Client{}
-
-	got, err := c.buildGenerateConfig(GenerateOptions{
+	got, err := buildGenerateConfig(GenerateOptions{
 		ResponseMIMEType: "audio/wav",
-	})
+	}, false)
 	if err != nil {
 		t.Fatalf("buildGenerateConfig() unexpected error = %v", err)
 	}
@@ -319,7 +292,7 @@ func TestBuildGenerateConfig_AudioResponseMIMETypeSetsModalities(t *testing.T) {
 	}
 }
 
-func TestGenerateWithParts_AudioOnlyResponse(t *testing.T) {
+func TestGenerateParts_AudioOnlyResponse(t *testing.T) {
 	ctx := context.Background()
 	fake := &fakeModelClient{
 		resp: &genai.GenerateContentResponse{
@@ -340,7 +313,7 @@ func TestGenerateWithParts_AudioOnlyResponse(t *testing.T) {
 		retryOpts:   Config{MaxRetries: 1}.buildRetryOptions(),
 	}
 
-	resp, err := c.GenerateWithParts(ctx, "gemini-test", []*genai.Part{{Text: "voice please"}}, GenerateOptions{
+	resp, err := c.generateParts(ctx, "gemini-test", []*genai.Part{{Text: "voice please"}}, GenerateOptions{
 		ResponseMIMEType: "audio/wav",
 	})
 	if err != nil {
@@ -354,7 +327,7 @@ func TestGenerateWithParts_AudioOnlyResponse(t *testing.T) {
 	}
 }
 
-func TestGenerateWithParts_ExtractsImagesAndAudios(t *testing.T) {
+func TestGenerateParts_ExtractsImagesAndAudios(t *testing.T) {
 	ctx := context.Background()
 	fake := &fakeModelClient{
 		resp: &genai.GenerateContentResponse{
@@ -381,9 +354,9 @@ func TestGenerateWithParts_ExtractsImagesAndAudios(t *testing.T) {
 		}.buildRetryOptions(),
 	}
 
-	resp, err := c.GenerateWithParts(ctx, "gemini-test", []*genai.Part{{Text: "hello"}}, GenerateOptions{})
+	resp, err := c.generateParts(ctx, "gemini-test", []*genai.Part{{Text: "hello"}}, GenerateOptions{})
 	if err != nil {
-		t.Fatalf("GenerateWithParts() unexpected error = %v", err)
+		t.Fatalf("generateParts() unexpected error = %v", err)
 	}
 	if len(resp.Images) != 1 || string(resp.Images[0]) != "image" {
 		t.Fatalf("Images = %v, want image", resp.Images)
@@ -393,7 +366,7 @@ func TestGenerateWithParts_ExtractsImagesAndAudios(t *testing.T) {
 	}
 }
 
-func TestGenerateWithParts_RetriesOnRateLimit(t *testing.T) {
+func TestGenerateParts_RetriesOnRateLimit(t *testing.T) {
 	ctx := context.Background()
 	fake := &fakeModelClient{
 		errs: []error{genai.APIError{Code: http.StatusTooManyRequests, Status: "RESOURCE_EXHAUSTED"}},
@@ -407,7 +380,7 @@ func TestGenerateWithParts_RetriesOnRateLimit(t *testing.T) {
 		}.buildRetryOptions(),
 	}
 
-	resp, err := c.GenerateWithParts(ctx, "gemini-test", []*genai.Part{{Text: "hello"}}, GenerateOptions{})
+	resp, err := c.generateParts(ctx, "gemini-test", []*genai.Part{{Text: "hello"}}, GenerateOptions{})
 	if err != nil {
 		t.Fatalf("429 の後にリトライで成功するはずですが、エラーが返りました: %v", err)
 	}
@@ -419,7 +392,7 @@ func TestGenerateWithParts_RetriesOnRateLimit(t *testing.T) {
 	}
 }
 
-func TestGenerateWithParts_DoesNotRetryOnBadRequest(t *testing.T) {
+func TestGenerateParts_DoesNotRetryOnBadRequest(t *testing.T) {
 	ctx := context.Background()
 	fake := &fakeModelClient{
 		err: genai.APIError{Code: http.StatusBadRequest, Status: "INVALID_ARGUMENT"},
@@ -433,7 +406,7 @@ func TestGenerateWithParts_DoesNotRetryOnBadRequest(t *testing.T) {
 		}.buildRetryOptions(),
 	}
 
-	_, err := c.GenerateWithParts(ctx, "gemini-test", []*genai.Part{{Text: "hello"}}, GenerateOptions{})
+	_, err := c.generateParts(ctx, "gemini-test", []*genai.Part{{Text: "hello"}}, GenerateOptions{})
 	if err == nil {
 		t.Fatal("400 エラーが返るべきですが、nil が返りました")
 	}
@@ -442,7 +415,7 @@ func TestGenerateWithParts_DoesNotRetryOnBadRequest(t *testing.T) {
 	}
 }
 
-func TestGenerateWithParts_PopulatesUsage(t *testing.T) {
+func TestGenerateParts_PopulatesUsage(t *testing.T) {
 	ctx := context.Background()
 	fake := &fakeModelClient{
 		resp: &genai.GenerateContentResponse{
@@ -464,9 +437,9 @@ func TestGenerateWithParts_PopulatesUsage(t *testing.T) {
 		retryOpts:   Config{MaxRetries: 1}.buildRetryOptions(),
 	}
 
-	resp, err := c.GenerateWithParts(ctx, "gemini-test", []*genai.Part{{Text: "hello"}}, GenerateOptions{})
+	resp, err := c.generateParts(ctx, "gemini-test", []*genai.Part{{Text: "hello"}}, GenerateOptions{})
 	if err != nil {
-		t.Fatalf("GenerateWithParts() unexpected error = %v", err)
+		t.Fatalf("generateParts() unexpected error = %v", err)
 	}
 	if resp.Usage == nil {
 		t.Fatal("Usage が nil です")
@@ -476,163 +449,36 @@ func TestGenerateWithParts_PopulatesUsage(t *testing.T) {
 	}
 }
 
-func TestCountTokens_Validation(t *testing.T) {
+func TestGenerateParts_RequestTimeoutBoundsCall(t *testing.T) {
 	ctx := context.Background()
-	c := &Client{}
-
-	if _, err := c.CountTokens(ctx, "gemini-test", ""); !errors.Is(err, ErrEmptyPrompt) {
-		t.Fatalf("CountTokens() error = %v, want ErrEmptyPrompt", err)
-	}
-	if _, err := c.CountTokensWithParts(ctx, "", []*genai.Part{{Text: "hi"}}); !errors.Is(err, ErrEmptyModelName) {
-		t.Fatalf("CountTokensWithParts() error = %v, want ErrEmptyModelName", err)
-	}
-}
-
-func TestCountTokens_Success(t *testing.T) {
-	ctx := context.Background()
-	fake := &fakeModelClient{
-		countTokensResp: &genai.CountTokensResponse{TotalTokens: 42},
-	}
+	fake := &slowModelClient{delay: 50 * time.Millisecond}
 	c := &Client{
-		modelClient: fake,
-		retryOpts:   Config{MaxRetries: 1}.buildRetryOptions(),
+		modelClient:    fake,
+		retryOpts:      Config{MaxRetries: 1}.buildRetryOptions(),
+		requestTimeout: time.Millisecond,
 	}
 
-	got, err := c.CountTokens(ctx, "gemini-test", "こんにちは")
-	if err != nil {
-		t.Fatalf("CountTokens() unexpected error = %v", err)
-	}
-	if got != 42 {
-		t.Fatalf("CountTokens() = %d, want 42", got)
-	}
-	if fake.gotModel != "gemini-test" {
-		t.Fatalf("gotModel = %q, want gemini-test", fake.gotModel)
+	_, err := c.generateParts(ctx, "gemini-test", []*genai.Part{{Text: "hello"}}, GenerateOptions{})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("RequestTimeout が効いていません: err = %v", err)
 	}
 }
 
-func TestCountTokens_DoesNotRetryOnBadRequest(t *testing.T) {
-	ctx := context.Background()
-	fake := &fakeModelClient{
-		countTokensErr: genai.APIError{Code: http.StatusBadRequest, Status: "INVALID_ARGUMENT"},
-	}
-	c := &Client{
-		modelClient: fake,
-		retryOpts: Config{
-			MaxRetries:   2,
-			InitialDelay: time.Nanosecond,
-			MaxDelay:     time.Nanosecond,
-		}.buildRetryOptions(),
-	}
-
-	_, err := c.CountTokens(ctx, "gemini-test", "hello")
-	if err == nil {
-		t.Fatal("400 エラーが返るべきですが、nil が返りました")
-	}
-	if fake.countTokensCalls != 1 {
-		t.Fatalf("CountTokens 呼び出し回数 = %d, want 1 (リトライなし)", fake.countTokensCalls)
-	}
+// slowModelClient は RequestTimeout の検証用に、context の期限まで応答しないフェイクです。
+type slowModelClient struct {
+	delay time.Duration
 }
 
-func TestGenerateContentStream_Validation(t *testing.T) {
-	ctx := context.Background()
-	c := &Client{}
-
-	if _, err := c.GenerateContentStream(ctx, "gemini-test", ""); !errors.Is(err, ErrEmptyPrompt) {
-		t.Fatalf("GenerateContentStream() error = %v, want ErrEmptyPrompt", err)
-	}
-	if _, err := c.GenerateWithPartsStream(ctx, "", []*genai.Part{{Text: "hi"}}, GenerateOptions{}); !errors.Is(err, ErrEmptyModelName) {
-		t.Fatalf("GenerateWithPartsStream() error = %v, want ErrEmptyModelName", err)
-	}
-}
-
-func TestGenerateContentStream_YieldsChunks(t *testing.T) {
-	ctx := context.Background()
-	fake := &fakeModelClient{
-		streamChunks: []*genai.GenerateContentResponse{
-			{
-				Candidates: []*genai.Candidate{
-					{FinishReason: genai.FinishReasonStop, Content: &genai.Content{Parts: []*genai.Part{{Text: "Hello"}}}},
-				},
+func (s *slowModelClient) GenerateContent(ctx context.Context, _ string, _ []*genai.Content, _ *genai.GenerateContentConfig) (*genai.GenerateContentResponse, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-time.After(s.delay):
+		return &genai.GenerateContentResponse{
+			Candidates: []*genai.Candidate{
+				{FinishReason: genai.FinishReasonStop, Content: &genai.Content{Parts: []*genai.Part{{Text: "late"}}}},
 			},
-			{
-				Candidates: []*genai.Candidate{
-					{FinishReason: genai.FinishReasonStop, Content: &genai.Content{Parts: []*genai.Part{{Text: ", world"}}}},
-				},
-			},
-			// 最終チャンクは usageMetadata のみで候補が空になることがある。
-			{UsageMetadata: &genai.GenerateContentResponseUsageMetadata{TotalTokenCount: 3}},
-		},
-	}
-	c := &Client{modelClient: fake}
-
-	seq, err := c.GenerateContentStream(ctx, "gemini-test", "hi")
-	if err != nil {
-		t.Fatalf("GenerateContentStream() unexpected error = %v", err)
-	}
-
-	var text string
-	var chunkCount int
-	for resp, err := range seq {
-		if err != nil {
-			t.Fatalf("ストリーム中に予期しないエラー: %v", err)
-		}
-		chunkCount++
-		text += resp.Text
-	}
-
-	if chunkCount != 3 {
-		t.Fatalf("chunkCount = %d, want 3", chunkCount)
-	}
-	if text != "Hello, world" {
-		t.Fatalf("text = %q, want %q", text, "Hello, world")
-	}
-}
-
-func TestGenerateContentStream_PropagatesChunkError(t *testing.T) {
-	ctx := context.Background()
-	fake := &fakeModelClient{
-		streamErr: genai.APIError{Code: http.StatusInternalServerError, Status: "INTERNAL"},
-	}
-	c := &Client{modelClient: fake}
-
-	seq, err := c.GenerateContentStream(ctx, "gemini-test", "hi")
-	if err != nil {
-		t.Fatalf("GenerateContentStream() unexpected error = %v", err)
-	}
-
-	var gotErr error
-	for _, err := range seq {
-		gotErr = err
-		break
-	}
-	if gotErr == nil {
-		t.Fatal("ストリームからエラーが伝播していません")
-	}
-}
-
-func TestGenerateContentStream_BlockedChunkStopsWithError(t *testing.T) {
-	ctx := context.Background()
-	fake := &fakeModelClient{
-		streamChunks: []*genai.GenerateContentResponse{
-			{Candidates: []*genai.Candidate{{FinishReason: genai.FinishReasonSafety}}},
-		},
-	}
-	c := &Client{modelClient: fake}
-
-	seq, err := c.GenerateContentStream(ctx, "gemini-test", "hi")
-	if err != nil {
-		t.Fatalf("GenerateContentStream() unexpected error = %v", err)
-	}
-
-	var gotErr error
-	for _, err := range seq {
-		gotErr = err
-	}
-	if gotErr == nil {
-		t.Fatal("ブロックされたチャンクでエラーが返っていません")
-	}
-	if _, ok := errors.AsType[*APIResponseError](gotErr); !ok {
-		t.Fatalf("gotErr = %v (%T), want *APIResponseError", gotErr, gotErr)
+		}, nil
 	}
 }
 
@@ -671,8 +517,7 @@ func TestBuildGenerateConfigAcceptsAliasedSchema(t *testing.T) {
 		Required: []string{"title"},
 	}
 
-	c := &Client{}
-	cfg, err := c.buildGenerateConfig(GenerateOptions{ResponseMIMEType: "application/json", ResponseSchema: schema})
+	cfg, err := buildGenerateConfig(GenerateOptions{ResponseMIMEType: "application/json", ResponseSchema: schema}, false)
 	if err != nil {
 		t.Fatalf("buildGenerateConfig() error = %v", err)
 	}

@@ -296,3 +296,38 @@ func TestSubmitPropagatesStartError(t *testing.T) {
 		t.Errorf("error = %v, want the start error", err)
 	}
 }
+
+// TestWaitPollsImmediately verifies the first poll happens without waiting one interval.
+// Submit→Wait の再開経路ではオペレーションが既に完了していることが多く、
+// 最初の確認前に interval 分待つのは純粋な死に時間になる（以前は毎回待っていた）。
+func TestWaitPollsImmediately(t *testing.T) {
+	fake := &fakeGenerator{
+		polls: []pollResponse{
+			{op: &gemini.VideoOperation{Name: "operations/done", Done: true, Videos: []gemini.Attachment{{URI: "gs://bucket/v.mp4"}}}},
+		},
+	}
+	// ポーリング間隔を1時間にしても、最初の確認は即座に行われるため完了する。
+	client := newTestClient(t, fake, WithPollInterval(time.Hour))
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		result, err := client.Wait(context.Background(), "operations/done")
+		if err != nil {
+			t.Errorf("Wait() error = %v", err)
+			return
+		}
+		if _, ok := result.First(); !ok {
+			t.Error("Wait() returned no video")
+		}
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Wait() が最初のポーリングを間隔待ちなしで行っていません")
+	}
+	if fake.pollCalls != 1 {
+		t.Errorf("PollVideo calls = %d, want 1", fake.pollCalls)
+	}
+}

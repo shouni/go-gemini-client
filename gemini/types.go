@@ -110,16 +110,15 @@ type Response struct {
 	Audios [][]byte // Lyria 3 等の音声データ
 	// Attachments は返却されたインラインデータを MIME type 付きで保持します。
 	//
-	// Images / Audios はバイト列だけなので、保存時の拡張子や Content-Type を決めるには
-	// RawResponse を辿るしかありませんでした。それだと利用側が genai SDK を読む必要が出るため、
-	// 型を保ったまま取り出せる形を用意しています。順序は API の返却順です。
+	// Images / Audios はバイト列だけなので、保存時の拡張子や Content-Type を決める
+	// 必要がある呼び出し側のために、型を保ったまま取り出せる形を用意しています。
+	// 順序は API の返却順です。
 	Attachments []Attachment
 	// Thoughts は思考サマリです。GenerateOptions.IncludeThoughts が true で、
 	// かつモデルが思考サマリを返した場合にのみ設定されます。
 	// Text には含まれません。
-	Thoughts    string
-	Usage       *TokenUsage
-	RawResponse *genai.GenerateContentResponse
+	Thoughts string
+	Usage    *TokenUsage
 }
 
 // TokenUsage は生成レスポンスのトークン使用量です。

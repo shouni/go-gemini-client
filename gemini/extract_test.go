@@ -22,7 +22,7 @@ func TestExtractText(t *testing.T) {
 			&genai.Part{Text: "世界"},
 		)
 
-		got, err := extractText(resp, false)
+		got, err := extractText(resp)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -38,7 +38,7 @@ func TestExtractText(t *testing.T) {
 			&genai.Part{Text: "答えは42です"},
 		)
 
-		got, err := extractText(resp, false)
+		got, err := extractText(resp)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -50,7 +50,7 @@ func TestExtractText(t *testing.T) {
 	t.Run("nil パートを飛ばすこと", func(t *testing.T) {
 		resp := respWithParts(genai.FinishReasonStop, nil, &genai.Part{Text: "ok"})
 
-		got, err := extractText(resp, false)
+		got, err := extractText(resp)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -60,7 +60,7 @@ func TestExtractText(t *testing.T) {
 	})
 
 	t.Run("空レスポンスは ErrEmptyResponse になること", func(t *testing.T) {
-		_, err := extractText(&genai.GenerateContentResponse{}, false)
+		_, err := extractText(&genai.GenerateContentResponse{})
 
 		if !errors.Is(err, ErrEmptyResponse) {
 			t.Errorf("ErrEmptyResponse を期待しましたが: %v", err)
@@ -70,17 +70,20 @@ func TestExtractText(t *testing.T) {
 		}
 	})
 
-	t.Run("lenient では空レスポンスを許容すること", func(t *testing.T) {
-		got, err := extractText(&genai.GenerateContentResponse{}, true)
-		if err != nil || got != "" {
-			t.Errorf("got (%q, %v), want (\"\", nil)", got, err)
+	t.Run("nil の候補スロットは ErrEmptyResponse になること", func(t *testing.T) {
+		// 候補スロット自体もサーバー由来の値で nil があり得る。以前は
+		// Candidates[0] を無防備に触っていたため panic する経路だった。
+		_, err := extractText(&genai.GenerateContentResponse{Candidates: []*genai.Candidate{nil}})
+
+		if !errors.Is(err, ErrEmptyResponse) {
+			t.Errorf("ErrEmptyResponse を期待しましたが: %v", err)
 		}
 	})
 
 	t.Run("ブロックは ErrBlocked と FinishReason を持つこと", func(t *testing.T) {
 		resp := respWithParts(genai.FinishReasonSafety, &genai.Part{Text: "..."})
 
-		_, err := extractText(resp, false)
+		_, err := extractText(resp)
 
 		if !errors.Is(err, ErrBlocked) {
 			t.Fatalf("ErrBlocked を期待しましたが: %v", err)
@@ -124,16 +127,14 @@ func TestExtractThoughts(t *testing.T) {
 }
 
 func TestBuildGenerateConfig_SamplingParams(t *testing.T) {
-	c := &Client{}
-
 	t.Run("サンプリングパラメータが SDK に渡ること", func(t *testing.T) {
-		cfg, err := c.buildGenerateConfig(GenerateOptions{
+		cfg, err := buildGenerateConfig(GenerateOptions{
 			Temperature:     Ptr[float32](0),
 			TopP:            Ptr[float32](0.9),
 			TopK:            Ptr[float32](40),
 			MaxOutputTokens: 2048,
 			StopSequences:   []string{"END"},
-		})
+		}, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -158,7 +159,7 @@ func TestBuildGenerateConfig_SamplingParams(t *testing.T) {
 	})
 
 	t.Run("未指定なら ThinkingConfig を送らないこと", func(t *testing.T) {
-		cfg, err := c.buildGenerateConfig(GenerateOptions{})
+		cfg, err := buildGenerateConfig(GenerateOptions{}, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -168,7 +169,7 @@ func TestBuildGenerateConfig_SamplingParams(t *testing.T) {
 	})
 
 	t.Run("ThinkingBudget 0 で思考を無効化できること", func(t *testing.T) {
-		cfg, err := c.buildGenerateConfig(GenerateOptions{ThinkingBudget: Ptr[int32](0)})
+		cfg, err := buildGenerateConfig(GenerateOptions{ThinkingBudget: Ptr[int32](0)}, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -181,7 +182,7 @@ func TestBuildGenerateConfig_SamplingParams(t *testing.T) {
 	})
 
 	t.Run("IncludeThoughts のみでも ThinkingConfig を送ること", func(t *testing.T) {
-		cfg, err := c.buildGenerateConfig(GenerateOptions{IncludeThoughts: true})
+		cfg, err := buildGenerateConfig(GenerateOptions{IncludeThoughts: true}, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -195,16 +196,16 @@ func TestBuildGenerateConfig_SamplingParams(t *testing.T) {
 // ブロック扱いしないことを検証します。
 //
 // genai.FinishReason のゼロ値は "" で、SDK 定数 FinishReasonUnspecified
-// ("FINISH_REASON_UNSPECIFIED") とは別値です。ストリーミングの中間チャンクは
-// 終了理由を含まないため、ここを取り違えると通常のストリーミングが
+// ("FINISH_REASON_UNSPECIFIED") とは別値です。サーバーは終了理由を含まない
+// レスポンスを返すことがあり、ここを取り違えると正常な応答が
 // 「ブロックされました」で失敗します。
 func TestExtractText_UnsetFinishReason(t *testing.T) {
 	t.Run("ゼロ値の FinishReason はブロック扱いしない", func(t *testing.T) {
 		resp := respWithParts("", &genai.Part{Text: "チャンク"})
 
-		got, err := extractText(resp, true)
+		got, err := extractText(resp)
 		if err != nil {
-			t.Fatalf("ストリーミング中間チャンクがブロック判定されました: %v", err)
+			t.Fatalf("終了理由なしのレスポンスがブロック判定されました: %v", err)
 		}
 		if got != "チャンク" {
 			t.Errorf("got %q, want \"チャンク\"", got)
@@ -214,7 +215,7 @@ func TestExtractText_UnsetFinishReason(t *testing.T) {
 	t.Run("FinishReasonUnspecified もブロック扱いしない", func(t *testing.T) {
 		resp := respWithParts(genai.FinishReasonUnspecified, &genai.Part{Text: "本文"})
 
-		if _, err := extractText(resp, false); err != nil {
+		if _, err := extractText(resp); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
@@ -222,7 +223,7 @@ func TestExtractText_UnsetFinishReason(t *testing.T) {
 	t.Run("STOP はブロック扱いしない", func(t *testing.T) {
 		resp := respWithParts(genai.FinishReasonStop, &genai.Part{Text: "本文"})
 
-		if _, err := extractText(resp, false); err != nil {
+		if _, err := extractText(resp); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
@@ -230,7 +231,7 @@ func TestExtractText_UnsetFinishReason(t *testing.T) {
 	t.Run("MAX_TOKENS はブロック扱いする", func(t *testing.T) {
 		resp := respWithParts(genai.FinishReasonMaxTokens, &genai.Part{Text: "途中"})
 
-		if _, err := extractText(resp, false); !errors.Is(err, ErrBlocked) {
+		if _, err := extractText(resp); !errors.Is(err, ErrBlocked) {
 			t.Errorf("ErrBlocked を期待しましたが: %v", err)
 		}
 	})
@@ -307,12 +308,11 @@ func TestBuildThinkingConfig(t *testing.T) {
 }
 
 func TestBuildGenerateConfig_ResponseSchema(t *testing.T) {
-	c := &Client{}
 	schema := &genai.Schema{Type: genai.TypeObject}
 	jsonSchema := map[string]any{"type": "object"}
 
 	t.Run("ResponseSchema のみ", func(t *testing.T) {
-		cfg, err := c.buildGenerateConfig(GenerateOptions{ResponseSchema: schema})
+		cfg, err := buildGenerateConfig(GenerateOptions{ResponseSchema: schema}, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -323,10 +323,10 @@ func TestBuildGenerateConfig_ResponseSchema(t *testing.T) {
 	})
 
 	t.Run("両方指定なら ResponseJSONSchema を優先すること", func(t *testing.T) {
-		cfg, err := c.buildGenerateConfig(GenerateOptions{
+		cfg, err := buildGenerateConfig(GenerateOptions{
 			ResponseSchema:     schema,
 			ResponseJSONSchema: jsonSchema,
-		})
+		}, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -351,7 +351,7 @@ func TestResponseFromGenAISkipsNilParts(t *testing.T) {
 		&genai.Part{InlineData: &genai.Blob{MIMEType: "audio/mpeg", Data: []byte("snd")}},
 	)
 
-	got, err := responseFromGenAI(resp, false)
+	got, err := responseFromGenAI(resp)
 	if err != nil {
 		t.Fatalf("responseFromGenAI() error = %v", err)
 	}

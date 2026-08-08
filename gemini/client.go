@@ -5,7 +5,7 @@ package gemini
 import (
 	"context"
 	"fmt"
-	"iter"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -17,15 +17,11 @@ import (
 // これらのアサーションがないと、Client のメソッドシグネチャがドリフトしても
 // 下流の利用側がビルドされるまで気付けません。
 var (
-	_ ContentGenerator          = (*Client)(nil)
-	_ GenerativeModel           = (*Client)(nil)
-	_ MultimodalGenerator       = (*Client)(nil)
-	_ MultimodalModel           = (*Client)(nil)
-	_ MultimodalStreamGenerator = (*Client)(nil)
-	_ MultimodalTokenCounter    = (*Client)(nil)
-	_ StreamGenerator           = (*Client)(nil)
-	_ TokenCounter              = (*Client)(nil)
-	_ VideoGenerator            = (*Client)(nil)
+	_ BackendInspector = (*Client)(nil)
+	_ FileManager      = (*Client)(nil)
+	_ Generator        = (*Client)(nil)
+	_ Model            = (*Client)(nil)
+	_ VideoGenerator   = (*Client)(nil)
 )
 
 // Client は Gemini SDK をラップしたメイン構造体です。
@@ -35,8 +31,11 @@ type Client struct {
 	videoClient         videoClient
 	backend             genai.Backend
 	retryOpts           []retry.Option
+	logger              *slog.Logger
+	requestTimeout      time.Duration
 	filePollingInterval time.Duration
 	filePollingTimeout  time.Duration
+	asyncCleanupTimeout time.Duration
 }
 
 // runWithRetry は共通のリトライ設定を適用して操作を実行します。
@@ -69,8 +68,11 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 		videoClient:         genAIVideoClient{models: client.Models, operations: client.Operations},
 		backend:             clientCfg.Backend,
 		retryOpts:           cfg.buildRetryOptions(),
+		logger:              cfg.getLogger(),
+		requestTimeout:      cfg.RequestTimeout,
 		filePollingInterval: cfg.getFilePollingInterval(),
 		filePollingTimeout:  cfg.getFilePollingTimeout(),
+		asyncCleanupTimeout: cfg.getAsyncCleanupTimeout(),
 	}, nil
 }
 
@@ -79,24 +81,45 @@ func (c *Client) IsVertexAI() bool {
 	return c.backend == genai.BackendVertexAI
 }
 
+// log は設定済みロガーを返します。NewClient を通らないゼロ値の Client
+// （テストの構造体リテラルなど）でも安全に動くようフォールバックを持ちます。
+func (c *Client) log() *slog.Logger {
+	if c.logger != nil {
+		return c.logger
+	}
+	return slog.Default()
+}
+
+// requestContext は Config.RequestTimeout を適用した context を返します。
+// 未設定（0）の場合は呼び出し元の context をそのまま使います。
+func (c *Client) requestContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if c.requestTimeout <= 0 {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, c.requestTimeout)
+}
+
 // GenerateContent は純粋なテキストプロンプトからコンテンツを生成します。
 func (c *Client) GenerateContent(ctx context.Context, modelName string, prompt string) (*Response, error) {
 	if prompt == "" {
 		return nil, ErrEmptyPrompt
 	}
 	parts := []*genai.Part{{Text: prompt}}
-	return c.GenerateWithParts(ctx, modelName, parts, GenerateOptions{})
+	return c.generateParts(ctx, modelName, parts, GenerateOptions{})
 }
 
-// GenerateWithParts はテキストや画像 (GCS URI含む) などのマルチモーダルパーツを処理してコンテンツを生成します。
-func (c *Client) GenerateWithParts(ctx context.Context, modelName string, parts []*genai.Part, opts GenerateOptions) (*Response, error) {
+// generateParts はマルチモーダルパーツからコンテンツを生成する共通経路です。
+//
+// 公開の入口は genai の型を伴わない GenerateContent / GenerateWithAttachments で、
+// genai.Part を直接受けるこの関数は公開しません（SDK の型を公開面に漏らさないため）。
+func (c *Client) generateParts(ctx context.Context, modelName string, parts []*genai.Part, opts GenerateOptions) (*Response, error) {
 	if err := validateGenerateInput(modelName, parts); err != nil {
 		return nil, err
 	}
 
 	contents := []*genai.Content{{Role: "user", Parts: parts}}
 
-	genConfig, err := c.buildGenerateConfig(opts)
+	genConfig, err := buildGenerateConfig(opts, c.IsVertexAI())
 	if err != nil {
 		return nil, err
 	}
@@ -139,18 +162,8 @@ func buildThinkingConfig(opts GenerateOptions) *genai.ThinkingConfig {
 	return cfg
 }
 
-func (c *Client) buildGenerateConfig(opts GenerateOptions) (*genai.GenerateContentConfig, error) {
-	genConfig := &genai.GenerateContentConfig{
-		SafetySettings:  opts.SafetySettings,
-		Temperature:     opts.Temperature,
-		TopP:            opts.TopP,
-		TopK:            opts.TopK,
-		MaxOutputTokens: opts.MaxOutputTokens,
-		StopSequences:   opts.StopSequences,
-	}
-
-	genConfig.ThinkingConfig = buildThinkingConfig(opts)
-
+// applyResponseFormat は、レスポンスの MIME type・モダリティ・構造化出力スキーマを適用します。
+func applyResponseFormat(genConfig *genai.GenerateContentConfig, opts GenerateOptions) {
 	if opts.ResponseMIMEType != "" {
 		genConfig.ResponseMIMEType = opts.ResponseMIMEType
 
@@ -168,6 +181,47 @@ func (c *Client) buildGenerateConfig(opts GenerateOptions) (*genai.GenerateConte
 	case opts.ResponseSchema != nil:
 		genConfig.ResponseSchema = opts.ResponseSchema
 	}
+}
+
+// applyImageConfig は、画像生成 (Imagen/Nano Banana) 特有の設定を適用します。
+// PersonGeneration は Vertex AI バックエンドでのみ送信します（Gemini API は未対応のため）。
+func applyImageConfig(genConfig *genai.GenerateContentConfig, opts GenerateOptions, vertexAI bool) {
+	if !opts.HasImageConfig() {
+		return
+	}
+	genConfig.ImageConfig = &genai.ImageConfig{}
+
+	if len(genConfig.ResponseModalities) == 0 {
+		genConfig.ResponseModalities = []string{"IMAGE"}
+	}
+
+	if opts.AspectRatio != "" {
+		genConfig.ImageConfig.AspectRatio = opts.AspectRatio
+	}
+	if opts.ImageSize != "" {
+		genConfig.ImageConfig.ImageSize = opts.ImageSize
+	}
+	if vertexAI && opts.PersonGeneration != PersonGenerationUnspecified {
+		genConfig.ImageConfig.PersonGeneration = string(opts.PersonGeneration)
+	}
+}
+
+// buildGenerateConfig は GenerateOptions を genai の生成設定へ変換します。
+// Client のメソッドにしないのは、バックエンド判定（vertexAI）以外に Client の状態へ
+// 依存しないためで、クライアント無しでテストできます。
+func buildGenerateConfig(opts GenerateOptions, vertexAI bool) (*genai.GenerateContentConfig, error) {
+	genConfig := &genai.GenerateContentConfig{
+		SafetySettings:  opts.SafetySettings,
+		Temperature:     opts.Temperature,
+		TopP:            opts.TopP,
+		TopK:            opts.TopK,
+		MaxOutputTokens: opts.MaxOutputTokens,
+		StopSequences:   opts.StopSequences,
+	}
+
+	genConfig.ThinkingConfig = buildThinkingConfig(opts)
+	applyResponseFormat(genConfig, opts)
+
 	if opts.Seed != nil {
 		seed, err := seedToPtrInt32(opts.Seed)
 		if err != nil {
@@ -180,30 +234,17 @@ func (c *Client) buildGenerateConfig(opts GenerateOptions) (*genai.GenerateConte
 			Parts: []*genai.Part{{Text: opts.SystemPrompt}},
 		}
 	}
-	// 画像生成 (Imagen/Nano Banana) 用の設定
-	if opts.HasImageConfig() {
-		genConfig.ImageConfig = &genai.ImageConfig{}
-
-		if len(genConfig.ResponseModalities) == 0 {
-			genConfig.ResponseModalities = []string{"IMAGE"}
-		}
-
-		if opts.AspectRatio != "" {
-			genConfig.ImageConfig.AspectRatio = opts.AspectRatio
-		}
-		if opts.ImageSize != "" {
-			genConfig.ImageConfig.ImageSize = opts.ImageSize
-		}
-		if c.IsVertexAI() && opts.PersonGeneration != PersonGenerationUnspecified {
-			genConfig.ImageConfig.PersonGeneration = string(opts.PersonGeneration)
-		}
-	}
+	applyImageConfig(genConfig, opts, vertexAI)
 
 	return genConfig, nil
 }
 
 // generate は共通の API 呼び出しとリトライロジックをカプセル化します。
+// Config.RequestTimeout が設定されている場合、リトライを含む呼び出し全体に適用されます。
 func (c *Client) generate(ctx context.Context, modelName string, contents []*genai.Content, config *genai.GenerateContentConfig) (*Response, error) {
+	ctx, cancel := c.requestContext(ctx)
+	defer cancel()
+
 	return runWithRetry(ctx, c.retryOpts,
 		fmt.Sprintf("Gemini API 呼び出し（モデル: %s）", modelName),
 		func() (*Response, error) {
@@ -211,19 +252,15 @@ func (c *Client) generate(ctx context.Context, modelName string, contents []*gen
 			if err != nil {
 				return nil, err
 			}
-			return responseFromGenAI(resp, false)
+			return responseFromGenAI(resp)
 		})
 }
 
 // responseFromGenAI は genai のレスポンスをパッケージ公開型の Response に変換します。
-// lenient が true の場合、ストリーミングの中間チャンクのように候補が空でもエラーにしません。
-func responseFromGenAI(resp *genai.GenerateContentResponse, lenient bool) (*Response, error) {
-	text, err := extractText(resp, lenient)
+func responseFromGenAI(resp *genai.GenerateContentResponse) (*Response, error) {
+	text, err := extractText(resp)
 	if err != nil {
 		return nil, err
-	}
-	if resp == nil {
-		return &Response{Text: text}, nil
 	}
 
 	// MIME タイプで振り分ける。Images / Audios は Attachments の部分集合で、
@@ -247,79 +284,5 @@ func responseFromGenAI(resp *genai.GenerateContentResponse, lenient bool) (*Resp
 		Attachments: attachments,
 		Thoughts:    extractThoughts(resp),
 		Usage:       tokenUsageFromMetadata(resp.UsageMetadata),
-		RawResponse: resp,
 	}, nil
-}
-
-// GenerateContentStream はテキストプロンプトからストリーミングでコンテンツを生成します。
-// リトライはストリーム開始前の入力検証にのみ適用され、ストリーム開始後のチャンク単位の
-// エラーは呼び出し側が iter.Seq2 の第2戻り値として受け取ります（部分的に消費済みの
-// ストリームを安全にリトライする方法がないため）。
-func (c *Client) GenerateContentStream(ctx context.Context, modelName string, prompt string) (iter.Seq2[*Response, error], error) {
-	if prompt == "" {
-		return nil, ErrEmptyPrompt
-	}
-	parts := []*genai.Part{{Text: prompt}}
-	return c.GenerateWithPartsStream(ctx, modelName, parts, GenerateOptions{})
-}
-
-// GenerateWithPartsStream はマルチモーダルなパーツからストリーミングでコンテンツを生成します。
-func (c *Client) GenerateWithPartsStream(ctx context.Context, modelName string, parts []*genai.Part, opts GenerateOptions) (iter.Seq2[*Response, error], error) {
-	if err := validateGenerateInput(modelName, parts); err != nil {
-		return nil, err
-	}
-
-	contents := []*genai.Content{{Role: "user", Parts: parts}}
-
-	genConfig, err := c.buildGenerateConfig(opts)
-	if err != nil {
-		return nil, err
-	}
-
-	chunks := c.modelClient.GenerateContentStream(ctx, modelName, contents, genConfig)
-
-	return func(yield func(*Response, error) bool) {
-		for resp, err := range chunks {
-			if err != nil {
-				yield(nil, err)
-				return
-			}
-
-			r, respErr := responseFromGenAI(resp, true)
-			if respErr != nil {
-				yield(nil, respErr)
-				return
-			}
-			if !yield(r, nil) {
-				return
-			}
-		}
-	}, nil
-}
-
-// CountTokens はテキストプロンプトのトークン数を計測します。
-func (c *Client) CountTokens(ctx context.Context, modelName string, prompt string) (int32, error) {
-	if prompt == "" {
-		return 0, ErrEmptyPrompt
-	}
-	return c.CountTokensWithParts(ctx, modelName, []*genai.Part{{Text: prompt}})
-}
-
-// CountTokensWithParts はマルチモーダルなパーツのトークン数を計測します。
-// 実際に生成を行わずにコストやコンテキスト長を事前に見積もる用途に使います。
-func (c *Client) CountTokensWithParts(ctx context.Context, modelName string, parts []*genai.Part) (int32, error) {
-	if err := validateGenerateInput(modelName, parts); err != nil {
-		return 0, err
-	}
-	contents := []*genai.Content{{Role: "user", Parts: parts}}
-
-	return runWithRetry(ctx, c.retryOpts,
-		fmt.Sprintf("Gemini CountTokens 呼び出し（モデル: %s）", modelName),
-		func() (int32, error) {
-			resp, err := c.modelClient.CountTokens(ctx, modelName, contents, &genai.CountTokensConfig{})
-			if err != nil {
-				return 0, err
-			}
-			return resp.TotalTokens, nil
-		})
 }

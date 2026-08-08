@@ -234,8 +234,7 @@ func TestAttachmentIsEmptyCoversBothCarriers(t *testing.T) {
 }
 
 // TestResponseAttachmentsCarryMIMETypes verifies returned inline data keeps its MIME type. Images
-// and Audios are bytes only, so without this the caller has to read RawResponse — and import genai —
-// just to know what to name the file it saves.
+// and Audios are bytes only, so without this the caller cannot know what to name the file it saves.
 func TestResponseAttachmentsCarryMIMETypes(t *testing.T) {
 	raw := &genai.GenerateContentResponse{
 		Candidates: []*genai.Candidate{{
@@ -247,7 +246,7 @@ func TestResponseAttachmentsCarryMIMETypes(t *testing.T) {
 		}},
 	}
 
-	resp, err := responseFromGenAI(raw, true)
+	resp, err := responseFromGenAI(raw)
 	if err != nil {
 		t.Fatalf("responseFromGenAI() error = %v", err)
 	}
@@ -264,90 +263,5 @@ func TestResponseAttachmentsCarryMIMETypes(t *testing.T) {
 	// 既存の Images / Audios は従来どおり振り分けられていること。
 	if len(resp.Images) != 1 || len(resp.Audios) != 1 {
 		t.Errorf("images = %d, audios = %d, want 1 each", len(resp.Images), len(resp.Audios))
-	}
-}
-
-// TestGenerateWithAttachmentsStreamSendsPromptAndInlineData verifies the streaming entry point
-// builds the same parts as the non-streaming one, so callers can stream multimodal input without
-// importing genai to assemble Part values.
-func TestGenerateWithAttachmentsStreamSendsPromptAndInlineData(t *testing.T) {
-	fake := &fakeModelClient{
-		streamChunks: []*genai.GenerateContentResponse{
-			respWithParts("", &genai.Part{Text: "こん"}),
-			respWithParts(genai.FinishReasonStop, &genai.Part{Text: "にちは"}),
-		},
-	}
-	client := &Client{modelClient: fake, retryOpts: Config{MaxRetries: 1}.buildRetryOptions()}
-
-	seq, err := client.GenerateWithAttachmentsStream(context.Background(), "gemini-test", "describe",
-		[]Attachment{{MIMEType: "image/png", Data: []byte("cover")}}, GenerateOptions{})
-	if err != nil {
-		t.Fatalf("GenerateWithAttachmentsStream() error = %v", err)
-	}
-
-	var got string
-	for resp, err := range seq {
-		if err != nil {
-			t.Fatalf("stream error = %v", err)
-		}
-		got += resp.Text
-	}
-	if got != "こんにちは" {
-		t.Errorf("streamed text = %q, want %q", got, "こんにちは")
-	}
-
-	parts := fake.gotContents[0].Parts
-	if len(parts) != 2 {
-		t.Fatalf("parts = %d, want prompt + attachment", len(parts))
-	}
-	if parts[0].Text != "describe" {
-		t.Errorf("parts[0].Text = %q, want the prompt first", parts[0].Text)
-	}
-	if parts[1].InlineData == nil || parts[1].InlineData.MIMEType != "image/png" {
-		t.Errorf("parts[1] = %+v, want the image attachment", parts[1])
-	}
-}
-
-// TestGenerateWithAttachmentsStreamValidatesAttachments verifies the shared attachment validation
-// runs before the stream starts, so a bad input fails at the call instead of on the first chunk.
-func TestGenerateWithAttachmentsStreamValidatesAttachments(t *testing.T) {
-	client := &Client{modelClient: &fakeModelClient{}, retryOpts: Config{MaxRetries: 1}.buildRetryOptions()}
-
-	_, err := client.GenerateWithAttachmentsStream(context.Background(), "gemini-test", "prompt",
-		[]Attachment{{MIMEType: "image/png", Data: []byte("x"), URI: "gs://bucket/x.png"}}, GenerateOptions{})
-	if !errors.Is(err, ErrInvalidAttachment) {
-		t.Errorf("error = %v, want ErrInvalidAttachment", err)
-	}
-}
-
-func TestCountTokensWithAttachments(t *testing.T) {
-	fake := &fakeModelClient{countTokensResp: &genai.CountTokensResponse{TotalTokens: 42}}
-	client := &Client{modelClient: fake, retryOpts: Config{MaxRetries: 1}.buildRetryOptions()}
-
-	total, err := client.CountTokensWithAttachments(context.Background(), "gemini-test", "describe",
-		[]Attachment{{URI: "gs://bucket/clip.mp3", MIMEType: "audio/mpeg"}})
-	if err != nil {
-		t.Fatalf("CountTokensWithAttachments() error = %v", err)
-	}
-	if total != 42 {
-		t.Errorf("total = %d, want 42", total)
-	}
-	if fake.countTokensCalls != 1 {
-		t.Errorf("CountTokens calls = %d, want 1", fake.countTokensCalls)
-	}
-}
-
-// TestCountTokensWithAttachmentsRejectsEmptyInput verifies an all-empty call is refused instead of
-// costing a round trip that can only answer zero.
-func TestCountTokensWithAttachmentsRejectsEmptyInput(t *testing.T) {
-	fake := &fakeModelClient{}
-	client := &Client{modelClient: fake, retryOpts: Config{MaxRetries: 1}.buildRetryOptions()}
-
-	_, err := client.CountTokensWithAttachments(context.Background(), "gemini-test", "", nil)
-	if !errors.Is(err, ErrEmptyParts) {
-		t.Errorf("error = %v, want ErrEmptyParts", err)
-	}
-	if fake.countTokensCalls != 0 {
-		t.Errorf("CountTokens calls = %d, want 0", fake.countTokensCalls)
 	}
 }
