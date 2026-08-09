@@ -47,6 +47,33 @@
 
 ---
 
+## 📂 パッケージ構成
+
+| パッケージ | 役割 |
+| --- | --- |
+| `github.com/shouni/go-gemini-client/gemini` | Gemini / Vertex AI クライアント、リトライ、File API、レスポンス抽出、Veo の 1 往復（`StartVideo` / `PollVideo`）。 |
+| `github.com/shouni/go-gemini-client/music` | 楽曲構成のデータ型（`Recipe` / `Section` / `LyricsDraft` / `AIModels`）。依存を持たない葉パッケージで、型だけが欲しい下流はこれだけを import できます。 |
+| `github.com/shouni/go-gemini-client/lyria` | 歌詞生成 → 作曲レシピ生成 → Lyria 音声生成の 3 段。`lyria.New` は `gemini.Generator` を受け取ります。 |
+| `github.com/shouni/go-gemini-client/veo` | Veo 動画生成の投函と完了待ち。`veo.New` は `gemini.VideoGenerator` を受け取ります。 |
+
+### 楽曲型 (`music`) と lyria ワークフロー
+
+`music.Recipe` は楽曲の構成（セクション・歌詞・使用モデル・seed）を表す、このエコシステムで最も広く共有される型です。JSON タグは snake_case で、保存済みレシピ JSON との互換性を保っています。
+
+```go
+import "github.com/shouni/go-gemini-client/music"
+
+var r music.Recipe
+r.Sections = []music.Section{{Name: "Verse", Duration: 30}}
+clone := r.Clone() // スライスやポインタも複製する深いコピー
+```
+
+型だけを別パッケージへ切り出しているのは、レシピを読み書きするだけの下流サービスが、レート制限や singleflight を伴うワークフロー本体まで輸入せずに済むようにするためです。`lyria.MusicRecipe` / `MusicSection` / `LyricsDraft` / `AIModels` は `music` の型の別名なので、既存の表記もそのまま使えます。
+
+ワークフロー（`lyria.Workflow`）は `GenerateLyrics` → `Compose` → `GenerateAudio` の 3 段を個別のメソッドとして公開します。段の間に構造検証などの品質ゲートを挟めるようにするためで、**一括実行の入口は意図的にありません**（品質ゲートは製品ごとに違うため、束ねても呼び出し側で分解し直すことになります）。
+
+---
+
 ## 🚀 クイックスタート
 
 ### インストール
@@ -220,114 +247,6 @@ File API の呼び出しにも `Config` のリトライ設定が効きます。
 - **Delete** は対象が既に存在しない場合（前回の削除が実は成功していた場合など）を成功として扱います
 - **Active 化待ちのステータス確認**にはリトライを掛けず、一時的な失敗をループ側で 5 回まで受け流します（ポーリングの内部でバックオフを効かせると間隔とタイムアウトの意味が失われるためです）
 - 失敗時のバックグラウンド削除の上限時間は `Config.AsyncCleanupTimeout`（既定 15 秒）で調整できます
-
----
-
-## 🎬 Veo 動画生成 (`veo`)
-
-`veo` パッケージは Veo による動画生成を扱います。動画生成は長時間実行オペレーションで、投函してから完了までポーリングし続ける必要があります。**「1往復ずつ」を `gemini` が、「どう待つか」を `veo` が持ちます。**
-
-```go
-client, err := gemini.NewClient(ctx, gemini.Config{ProjectID: "my-project", LocationID: "us-central1"})
-if err != nil {
-	return err
-}
-
-videoClient, err := veo.New(client,
-	veo.WithPollInterval(10*time.Second),
-	veo.WithPollTimeout(15*time.Minute),
-)
-if err != nil {
-	return err
-}
-
-result, err := videoClient.Generate(ctx, "veo-3.1-generate-001", veo.Request{
-	Prompt:       "a slow dolly-in on a coastal cliffside at dawn",
-	Image:        &veo.Media{URI: "gs://bucket/keyframe.png", MIMEType: "image/png"},
-	DurationSec:  8,
-	AspectRatio:  "16:9",
-	OutputGCSURI: "gs://bucket/videos/",
-})
-if err != nil {
-	return err
-}
-video, _ := result.First() // video.URI に生成された動画の GCS URI が入ります
-```
-
-`Result` は `OperationName`（課金や失敗の追跡用）、`Videos`、`FilteredCount` / `FilteredReasons`（安全性ポリシーで除外された本数と理由）を持ちます。1 本も生成されなかった場合は `Generate` が `ErrNoVideoGenerated` を返すため、`FilteredCount` が非ゼロで `Videos` も非空なのは、複数本を要求して一部だけ除外されたケースです。
-
-`veo.New` は `gemini.VideoGenerator`（`StartVideo` / `PollVideo` の 2 メソッド）を受け取るだけなので、テストでは genai SDK も GCP 認証も無しでポーリング挙動を検証できます。
-
-### 入力の組み合わせ
-
-Veo は入力系統を併用できません。`StartVideo` は API が確実に拒否する組み合わせを送信前に `ErrInvalidVideoInput` で弾きます。
-
-| 使う機能 | 設定するフィールド |
-| --- | --- |
-| image-to-video | `Image` |
-| first/last frame 補間 | `Image` + `LastFrame` |
-| reference-to-video | `References`（`Image` / `Video` / `LastFrame` とは排他） |
-| video extension（継続生成） | `Video`（`Image` とは排他） |
-
-`References` に渡す `veo.Reference` は、画像の使われ方を `Type` で指定します。`gemini.VideoReferenceAsset`（被写体を登場させる。最大3枚）と `gemini.VideoReferenceStyle`（画風を反映させる）から選び、未指定は API のデフォルトに委ねます。
-
-生成パラメータは `veo.Request` の以下のフィールドで指定します。ゼロ値はいずれも「API のデフォルトに委ねる」の意味です。
-
-| フィールド | 役割 |
-| --- | --- |
-| `Prompt` | 生成指示。`Image` / `Video` のいずれも無い場合は必須です。 |
-| `DurationSec` | 生成する動画の秒数。受け付けられる値はモデルと入力の組み合わせで異なります。 |
-| `AspectRatio` / `Resolution` | `"16:9"` / `"9:16"`、`"720p"` / `"1080p"` などを指定します。 |
-| `NegativePrompt` | 生成に含めたくない要素を指定します。 |
-| `GenerateAudio` | 音声を同時生成するか（`*bool`）。nil で API のデフォルト。 |
-| `Seed` | 再現性のためのシード（`*int64`）。`int32` の範囲外は `ErrInvalidSeed` です。 |
-| `NumberOfVideos` | 生成する本数。0 で API のデフォルト（通常 1 本）。 |
-| `OutputGCSURI` | 保存先の GCS バケット。未指定なら結果はバイト列で返ります（長尺では応答が大きくなるため通常は指定します）。 |
-
-### ポーリングの持ち方
-
-`gemini.PollVideo` は **1 回の問い合わせに徹し、リトライを掛けません**。ポーリング自体が繰り返しの仕組みなので、その内部でさらにバックオフを効かせると 1 回の問い合わせに数十秒かかりうる二重の待ちになり、設定したポーリング間隔とタイムアウトが意味を失うためです。一時的な失敗を何回まで許容するかは、間隔とタイムアウトを持っている `veo.Client` の判断で、`WithMaxPollErrors`（既定 10 回）で調整します。
-
-一方、**投函（`StartVideo`）には `Config` のリトライ設定が効きます**。レート制限や一時的なサーバーエラーで 1 本分の生成が落ちるのを防ぐためです。
-
-`Wait` は最初の問い合わせを間隔待ちなしで直ちに行います。別実行からの再開ではオペレーションが既に完了していることが多く、確認前に 1 interval 分（既定 10 秒）待つのは純粋な死に時間になるためです。
-
-`Generate` は投函と完了待ちをまとめて行いますが、`Submit` と `Wait` に分けても呼べます。実行時間に上限のあるジョブ基盤で、投函だけ済ませて一旦戻り、次の実行でオペレーション名を渡して待ちを再開する、といった使い方ができます。
-
-```go
-// 実行 1: 投函してオペレーション名を保存する（完了は待たない）
-name, err := videoClient.Submit(ctx, "veo-3.1-generate-001", veo.Request{Prompt: "..."})
-
-// 実行 2: 保存した名前で待ちを再開する
-result, err := videoClient.Wait(ctx, name)
-```
-
-`veo.Client` のオプションは `WithPollInterval`（既定 10 秒）/ `WithPollTimeout`（既定 15 分）/ `WithMaxPollErrors`（既定 10 回）/ `WithLogger`（既定 `slog.Default()`）です。
-
-### SDK 未対応フィールドの送信
-
-SDK がまだ型として持たないプレビュー機能は、2 つの方法でリクエストボディへ差し込めます。いずれも構造はバックエンドの REST API に一致させる必要があり、型検査も検証も効きません。SDK が対応している項目は通常のフィールドを使ってください。
-
-| フィールド | 用途 |
-| --- | --- |
-| `Request.ExtraBody` | ボディへマージする値。**マージが再帰するのはマップ同士のときだけ**で、同じキーの値が配列なら丸ごと置き換わります |
-| `Request.ModifyRequestBody` | 組み立て済みボディを受け取って書き換える関数。`ExtraBody` のマージ後に呼ばれます |
-
-Vertex AI のリクエストは `{"instances": [...], "parameters": {...}}` という形なので、`instances` の要素へ値を足したい場合に `ExtraBody` を使うと **`instances` 配列ごと置き換わり、prompt も画像入力も消えます**。その用途では `ModifyRequestBody` を使ってください。
-
-```go
-req.ModifyRequestBody = func(body map[string]any) map[string]any {
-	instances, _ := body["instances"].([]any)
-	if len(instances) > 0 {
-		if instance, ok := instances[0].(map[string]any); ok {
-			instance["audio"] = map[string]any{"gcsUri": "gs://bucket/bgm.mp3"}
-		}
-	}
-	return body
-}
-```
-
-どちらも効くのは「SDK が既に叩いているエンドポイントのボディをいじる」場合だけです。エンドポイント自体が SDK に無い場合（Interactions API など）は救えません。
 
 ---
 
@@ -510,30 +429,111 @@ case errors.Is(err, gemini.ErrEmptyResponse):
 
 ---
 
-## 📂 パッケージ構成
+## 🎬 Veo 動画生成 (`veo`)
 
-| パッケージ | 役割 |
-| --- | --- |
-| `github.com/shouni/go-gemini-client/gemini` | Gemini / Vertex AI クライアント、リトライ、File API、レスポンス抽出、Veo の 1 往復（`StartVideo` / `PollVideo`）。 |
-| `github.com/shouni/go-gemini-client/music` | 楽曲構成のデータ型（`Recipe` / `Section` / `LyricsDraft` / `AIModels`）。依存を持たない葉パッケージで、型だけが欲しい下流はこれだけを import できます。 |
-| `github.com/shouni/go-gemini-client/lyria` | 歌詞生成 → 作曲レシピ生成 → Lyria 音声生成の 3 段。`lyria.New` は `gemini.Generator` を受け取ります。 |
-| `github.com/shouni/go-gemini-client/veo` | Veo 動画生成の投函と完了待ち。`veo.New` は `gemini.VideoGenerator` を受け取ります。 |
-
-### 楽曲型 (`music`) と lyria ワークフロー
-
-`music.Recipe` は楽曲の構成（セクション・歌詞・使用モデル・seed）を表す、このエコシステムで最も広く共有される型です。JSON タグは snake_case で、保存済みレシピ JSON との互換性を保っています。
+`veo` パッケージは Veo による動画生成を扱います。動画生成は長時間実行オペレーションで、投函してから完了までポーリングし続ける必要があります。**「1往復ずつ」を `gemini` が、「どう待つか」を `veo` が持ちます。**
 
 ```go
-import "github.com/shouni/go-gemini-client/music"
+client, err := gemini.NewClient(ctx, gemini.Config{ProjectID: "my-project", LocationID: "us-central1"})
+if err != nil {
+	return err
+}
 
-var r music.Recipe
-r.Sections = []music.Section{{Name: "Verse", Duration: 30}}
-clone := r.Clone() // スライスやポインタも複製する深いコピー
+videoClient, err := veo.New(client,
+	veo.WithPollInterval(10*time.Second),
+	veo.WithPollTimeout(15*time.Minute),
+)
+if err != nil {
+	return err
+}
+
+result, err := videoClient.Generate(ctx, "veo-3.1-generate-001", veo.Request{
+	Prompt:       "a slow dolly-in on a coastal cliffside at dawn",
+	Image:        &veo.Media{URI: "gs://bucket/keyframe.png", MIMEType: "image/png"},
+	DurationSec:  8,
+	AspectRatio:  "16:9",
+	OutputGCSURI: "gs://bucket/videos/",
+})
+if err != nil {
+	return err
+}
+video, _ := result.First() // video.URI に生成された動画の GCS URI が入ります
 ```
 
-型だけを別パッケージへ切り出しているのは、レシピを読み書きするだけの下流サービスが、レート制限や singleflight を伴うワークフロー本体まで輸入せずに済むようにするためです。`lyria.MusicRecipe` / `MusicSection` / `LyricsDraft` / `AIModels` は `music` の型の別名なので、既存の表記もそのまま使えます。
+`Result` は `OperationName`（課金や失敗の追跡用）、`Videos`、`FilteredCount` / `FilteredReasons`（安全性ポリシーで除外された本数と理由）を持ちます。1 本も生成されなかった場合は `Generate` が `ErrNoVideoGenerated` を返すため、`FilteredCount` が非ゼロで `Videos` も非空なのは、複数本を要求して一部だけ除外されたケースです。
 
-ワークフロー（`lyria.Workflow`）は `GenerateLyrics` → `Compose` → `GenerateAudio` の 3 段を個別のメソッドとして公開します。段の間に構造検証などの品質ゲートを挟めるようにするためで、**一括実行の入口は意図的にありません**（品質ゲートは製品ごとに違うため、束ねても呼び出し側で分解し直すことになります）。
+`veo.New` は `gemini.VideoGenerator`（`StartVideo` / `PollVideo` の 2 メソッド）を受け取るだけなので、テストでは genai SDK も GCP 認証も無しでポーリング挙動を検証できます。
+
+### 入力の組み合わせ
+
+Veo は入力系統を併用できません。`StartVideo` は API が確実に拒否する組み合わせを送信前に `ErrInvalidVideoInput` で弾きます。
+
+| 使う機能 | 設定するフィールド |
+| --- | --- |
+| image-to-video | `Image` |
+| first/last frame 補間 | `Image` + `LastFrame` |
+| reference-to-video | `References`（`Image` / `Video` / `LastFrame` とは排他） |
+| video extension（継続生成） | `Video`（`Image` とは排他） |
+
+`References` に渡す `veo.Reference` は、画像の使われ方を `Type` で指定します。`gemini.VideoReferenceAsset`（被写体を登場させる。最大3枚）と `gemini.VideoReferenceStyle`（画風を反映させる）から選び、未指定は API のデフォルトに委ねます。
+
+生成パラメータは `veo.Request` の以下のフィールドで指定します。ゼロ値はいずれも「API のデフォルトに委ねる」の意味です。
+
+| フィールド | 役割 |
+| --- | --- |
+| `Prompt` | 生成指示。`Image` / `Video` のいずれも無い場合は必須です。 |
+| `DurationSec` | 生成する動画の秒数。受け付けられる値はモデルと入力の組み合わせで異なります。 |
+| `AspectRatio` / `Resolution` | `"16:9"` / `"9:16"`、`"720p"` / `"1080p"` などを指定します。 |
+| `NegativePrompt` | 生成に含めたくない要素を指定します。 |
+| `GenerateAudio` | 音声を同時生成するか（`*bool`）。nil で API のデフォルト。 |
+| `Seed` | 再現性のためのシード（`*int64`）。`int32` の範囲外は `ErrInvalidSeed` です。 |
+| `NumberOfVideos` | 生成する本数。0 で API のデフォルト（通常 1 本）。 |
+| `OutputGCSURI` | 保存先の GCS バケット。未指定なら結果はバイト列で返ります（長尺では応答が大きくなるため通常は指定します）。 |
+
+### ポーリングの持ち方
+
+`gemini.PollVideo` は **1 回の問い合わせに徹し、リトライを掛けません**。ポーリング自体が繰り返しの仕組みなので、その内部でさらにバックオフを効かせると 1 回の問い合わせに数十秒かかりうる二重の待ちになり、設定したポーリング間隔とタイムアウトが意味を失うためです。一時的な失敗を何回まで許容するかは、間隔とタイムアウトを持っている `veo.Client` の判断で、`WithMaxPollErrors`（既定 10 回）で調整します。
+
+一方、**投函（`StartVideo`）には `Config` のリトライ設定が効きます**。レート制限や一時的なサーバーエラーで 1 本分の生成が落ちるのを防ぐためです。
+
+`Wait` は最初の問い合わせを間隔待ちなしで直ちに行います。別実行からの再開ではオペレーションが既に完了していることが多く、確認前に 1 interval 分（既定 10 秒）待つのは純粋な死に時間になるためです。
+
+`Generate` は投函と完了待ちをまとめて行いますが、`Submit` と `Wait` に分けても呼べます。実行時間に上限のあるジョブ基盤で、投函だけ済ませて一旦戻り、次の実行でオペレーション名を渡して待ちを再開する、といった使い方ができます。
+
+```go
+// 実行 1: 投函してオペレーション名を保存する（完了は待たない）
+name, err := videoClient.Submit(ctx, "veo-3.1-generate-001", veo.Request{Prompt: "..."})
+
+// 実行 2: 保存した名前で待ちを再開する
+result, err := videoClient.Wait(ctx, name)
+```
+
+`veo.Client` のオプションは `WithPollInterval`（既定 10 秒）/ `WithPollTimeout`（既定 15 分）/ `WithMaxPollErrors`（既定 10 回）/ `WithLogger`（既定 `slog.Default()`）です。
+
+### SDK 未対応フィールドの送信
+
+SDK がまだ型として持たないプレビュー機能は、2 つの方法でリクエストボディへ差し込めます。いずれも構造はバックエンドの REST API に一致させる必要があり、型検査も検証も効きません。SDK が対応している項目は通常のフィールドを使ってください。
+
+| フィールド | 用途 |
+| --- | --- |
+| `Request.ExtraBody` | ボディへマージする値。**マージが再帰するのはマップ同士のときだけ**で、同じキーの値が配列なら丸ごと置き換わります |
+| `Request.ModifyRequestBody` | 組み立て済みボディを受け取って書き換える関数。`ExtraBody` のマージ後に呼ばれます |
+
+Vertex AI のリクエストは `{"instances": [...], "parameters": {...}}` という形なので、`instances` の要素へ値を足したい場合に `ExtraBody` を使うと **`instances` 配列ごと置き換わり、prompt も画像入力も消えます**。その用途では `ModifyRequestBody` を使ってください。
+
+```go
+req.ModifyRequestBody = func(body map[string]any) map[string]any {
+	instances, _ := body["instances"].([]any)
+	if len(instances) > 0 {
+		if instance, ok := instances[0].(map[string]any); ok {
+			instance["audio"] = map[string]any{"gcsUri": "gs://bucket/bgm.mp3"}
+		}
+	}
+	return body
+}
+```
+
+どちらも効くのは「SDK が既に叩いているエンドポイントのボディをいじる」場合だけです。エンドポイント自体が SDK に無い場合（Interactions API など）は救えません。
 
 ---
 
