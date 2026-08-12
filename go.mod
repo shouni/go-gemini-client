@@ -3,7 +3,7 @@ module github.com/shouni/go-gemini-client
 go 1.26
 
 require (
-	github.com/shouni/netarmor v1.2.0
+	github.com/shouni/netarmor v1.2.1
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sync v0.22.0
