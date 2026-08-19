@@ -6,7 +6,7 @@
 [![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/shouni/go-gemini-client)](https://github.com/shouni/go-gemini-client/tags)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Reference](https://pkg.go.dev/badge/github.com/shouni/go-gemini-client.svg)](https://pkg.go.dev/github.com/shouni/go-gemini-client)
-[![Status](https://img.shields.io/badge/Status-Completed-brightgreen)](#)
+[![Status](https://img.shields.io/badge/Status-Active-brightgreen)](#)
 
 ## 🎯 概要: Net Armor 統合型ハイブリッド Gemini クライアント
 
