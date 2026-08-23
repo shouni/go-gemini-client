@@ -1,6 +1,8 @@
 package gemini
 
 import (
+	"fmt"
+	"math"
 	"time"
 
 	"google.golang.org/genai"
@@ -231,4 +233,17 @@ func NewSafetySettings(threshold SafetyThreshold) []*genai.SafetySetting {
 		{Category: genai.HarmCategorySexuallyExplicit, Threshold: threshold},
 		{Category: genai.HarmCategoryDangerousContent, Threshold: threshold},
 	}
+}
+
+// seedToPtrInt32 は *int64 を SDK 用の *int32 に変換します。
+func seedToPtrInt32(s *int64) (*int32, error) {
+	if s == nil {
+		return nil, nil
+	}
+
+	if *s > math.MaxInt32 || *s < math.MinInt32 {
+		return nil, fmt.Errorf("%w (入力値: %d)", ErrInvalidSeed, *s)
+	}
+
+	return new(int32(*s)), nil
 }

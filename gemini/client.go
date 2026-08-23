@@ -38,15 +38,6 @@ type Client struct {
 	asyncCleanupTimeout time.Duration
 }
 
-// runWithRetry は共通のリトライ設定を適用して操作を実行します。
-// retry.RunValue を使うことで、呼び出し側がクロージャで結果を受け渡す必要がなくなります。
-func runWithRetry[T any](ctx context.Context, opts []retry.Option, name string, op func() (T, error)) (T, error) {
-	all := make([]retry.Option, 0, len(opts)+2)
-	all = append(all, opts...)
-	all = append(all, retry.WithName(name), retry.WithShouldRetry(shouldRetry))
-	return retry.RunValue(ctx, op, all...)
-}
-
 // NewClient は提供された設定に基づいて、新しい Gemini クライアントを作成します。
 func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 	if err := cfg.validate(); err != nil {
