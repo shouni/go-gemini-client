@@ -109,7 +109,7 @@ func TestConfig_retryParams(t *testing.T) {
 
 	t.Run("設定値で上書きされること", func(t *testing.T) {
 		cfg := Config{
-			MaxRetries:   5,
+			MaxRetries:   Ptr[uint64](5),
 			InitialDelay: 10 * time.Second,
 			MaxDelay:     60 * time.Second,
 		}
@@ -119,8 +119,29 @@ func TestConfig_retryParams(t *testing.T) {
 		}
 	})
 
+	// 0 は「再試行しない」で、未設定の既定値へは倒しません。
+	// MaxRetries が値型だったころは構造体のゼロ値と区別できず、これを書く手段が
+	// そもそもありませんでした（0 と書いても DefaultMaxRetries が使われていた）。
+	t.Run("明示した 0 は再試行しないこと", func(t *testing.T) {
+		cfg := Config{MaxRetries: Ptr[uint64](0)}
+		got := cfg.retryParams()
+		if got.MaxRetries != 0 {
+			t.Errorf("MaxRetries = %v, want 0", got.MaxRetries)
+		}
+	})
+
+	// nil のときだけ既定値へ倒すこと。ゼロ値の Config が既定回数で再試行する
+	// 従来の挙動は変えていません。
+	t.Run("nil は既定値へ倒すこと", func(t *testing.T) {
+		cfg := Config{MaxRetries: nil}
+		got := cfg.retryParams()
+		if got.MaxRetries != clampToUint(DefaultMaxRetries) {
+			t.Errorf("MaxRetries = %v, want %v", got.MaxRetries, DefaultMaxRetries)
+		}
+	})
+
 	t.Run("Option 列に変換できること", func(t *testing.T) {
-		opts := Config{MaxRetries: 5}.buildRetryOptions()
+		opts := Config{MaxRetries: Ptr[uint64](5)}.buildRetryOptions()
 		if len(opts) != 3 {
 			t.Errorf("Option の数が不正です: %d", len(opts))
 		}

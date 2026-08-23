@@ -257,7 +257,7 @@ File API の呼び出しにも `Config` のリトライ設定が効きます。
 | `APIKey` | Gemini API キー。Google AI Studio / Gemini API で利用します。 | - |
 | `ProjectID` | Google Cloud プロジェクト ID。Vertex AI で利用します。 | - |
 | `LocationID` | Vertex AI のリージョン。例: `asia-northeast1`, `us-central1` | - |
-| `MaxRetries` | 最大リトライ回数 | `1` |
+| `MaxRetries` | 最大リトライ回数（`*uint64`）。`nil` は既定値、`Ptr[uint64](0)` は再試行しない | `1` |
 | `InitialDelay` | リトライ開始時の待機時間 | `30s` |
 | `MaxDelay` | リトライ待機時間の上限 | `120s` |
 | `FilePollingInterval` | File API の状態確認間隔 | `2s` |
