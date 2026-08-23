@@ -1,5 +1,3 @@
-// Package lyria は、歌詞生成・楽曲設計・Lyriaによる音声生成を束ねる
-// 音楽生成ワークフローを提供します。
 package lyria
 
 import (

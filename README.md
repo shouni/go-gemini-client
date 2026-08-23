@@ -39,11 +39,11 @@
 - **自動クリーンアップ**: Active 化に失敗した File API オブジェクトはバックグラウンドで削除を試みます。
 - **レスポンス抽出**: テキスト、生成画像、生成音声、MIME type 付きの添付 (`Attachments`)、トークン使用量 (`Usage`) を `gemini.Response` にまとめて返します。
 
-### 🎬 Veo 動画生成 (`veo`)
+### 🎬 動画生成 (`veo`) と音楽生成 (`lyria`)
 
-- **長時間実行オペレーションの完走**: 投函から完了までのポーリング、タイムアウト、一時的な失敗の許容をまとめて扱います。投函 (`Submit`) と完了待ち (`Wait`) は別の実行に分けられます。
+- **長時間実行オペレーションの完走**: `veo` が投函から完了までのポーリング、タイムアウト、一時的な失敗の許容を引き受けます。投函と完了待ちを別の実行に分けることもできます。
 - **入力の事前検証**: Veo が併用できない入力（video と image など）を送信前に弾きます。
-- **genai 非依存**: `gemini.VideoGenerator` の 2 メソッドを注入するだけなので、テストは SDK も認証も不要です。
+- **音楽生成の 3 段**: `lyria` が歌詞生成 → 作曲レシピ → Lyria 音声生成を、段ごとに分けて公開します。
 
 ---
 
@@ -52,7 +52,7 @@
 | パッケージ | 役割 |
 | --- | --- |
 | `github.com/shouni/go-gemini-client/gemini` | Gemini / Vertex AI クライアント、リトライ、File API、レスポンス抽出、Veo の 1 往復（`StartVideo` / `PollVideo`）。 |
-| `github.com/shouni/go-gemini-client/music` | 楽曲構成のデータ型（`Recipe` / `Section` / `LyricsDraft` / `AIModels`）。依存を持たない葉パッケージで、型だけが欲しい下流はこれだけを import できます。 |
+| `github.com/shouni/go-gemini-client/music` | 楽曲構成のデータ型（`Recipe` / `Section` / `LyricsDraft` / `AIModels`）。依存を持たない葉パッケージです。 |
 | `github.com/shouni/go-gemini-client/lyria` | 歌詞生成 → 作曲レシピ生成 → Lyria 音声生成の 3 段。`lyria.New` は `gemini.Generator` を受け取ります。 |
 | `github.com/shouni/go-gemini-client/veo` | Veo 動画生成の投函と完了待ち。`veo.New` は `gemini.VideoGenerator` を受け取ります。 |
 
@@ -105,7 +105,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	resp, err := client.GenerateContent(ctx, "gemini-3.6-flash", "Goで短い俳句を書いて")
+	resp, err := client.GenerateContent(ctx, "gemini-3.7-flash", "Goで短い俳句を書いて")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -142,7 +142,7 @@ Vertex AI モードでは、Google Cloud 側の認証情報を利用します。
 `gemini.Attachment` はバイト列と URI 参照のどちらも表現できます。
 
 ```go
-resp, err := client.GenerateWithAttachments(ctx, "gemini-3.6-flash",
+resp, err := client.GenerateWithAttachments(ctx, "gemini-3.7-flash",
 	"この画像の内容を日本語で要約してください",
 	[]gemini.Attachment{
 		// Vertex AI では gs:// を直接参照でき、File API の files/... も同じ形で渡せます。
@@ -194,8 +194,7 @@ if len(resp.Images) > 0 {
 }
 
 for _, attachment := range resp.Attachments {
-	// attachment.MIMEType で保存時の拡張子や Content-Type を決められます。
-	_ = attachment
+	_ = attachment.MIMEType // 保存時の拡張子や Content-Type の決定に使えます
 }
 ```
 
@@ -235,7 +234,7 @@ defer func() {
 	}
 }()
 
-resp, err := client.GenerateWithAttachments(ctx, "gemini-3.6-flash",
+resp, err := client.GenerateWithAttachments(ctx, "gemini-3.7-flash",
 	"この動画を要約してください",
 	[]gemini.Attachment{{URI: uploaded.URI, MIMEType: "video/mp4"}},
 	gemini.GenerateOptions{})
