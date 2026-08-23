@@ -24,10 +24,22 @@ var (
 // Vertex AI を使用する場合は ProjectID と LocationID を指定してください。
 // Gemini API (Google AI Studio) を使用する場合は APIKey を指定してください。
 type Config struct {
-	APIKey              string
-	ProjectID           string // Vertex AI: Google Cloud Project ID
-	LocationID          string // Vertex AI: Location (e.g., "us-central1")
-	MaxRetries          uint64
+	APIKey     string
+	ProjectID  string // Vertex AI: Google Cloud Project ID
+	LocationID string // Vertex AI: Location (e.g., "us-central1")
+
+	// MaxRetries は、1 回の呼び出しで許すリトライの回数です。
+	// nil は未設定で、DefaultMaxRetries を使います。
+	//
+	// ポインタなのは、0 に意味を 2 つ持たせられないためです。netarmor の
+	// retry.WithMaxRetries(0) は「リトライしない」ですが、構造体のゼロ値も 0 なので、
+	// 値型のままでは未設定と区別できず「リトライしない」を表現する方法がありませんでした
+	// （未設定を優先して既定値へ倒していたため、0 を書いても既定回数だけリトライしていました）。
+	//
+	//	cfg.MaxRetries = Ptr[uint64](0) // リトライしない
+	//	cfg.MaxRetries = Ptr[uint64](3) // 3 回までリトライする
+	MaxRetries *uint64
+
 	InitialDelay        time.Duration
 	MaxDelay            time.Duration
 	FilePollingInterval time.Duration
@@ -70,17 +82,18 @@ type Config struct {
 	OnRetry retry.NotifyFunc
 }
 
-// isVertexAI ProjectIDおよびLocationIDのセットを確認し、Vertex AIの設定が有効であるかをチェックします。
+// isVertexAI は、Vertex AI を使う設定（ProjectID と LocationID の両方）が揃っているかを返します。
 func (c Config) isVertexAI() bool {
 	return c.ProjectID != "" && c.LocationID != ""
 }
 
-// isGeminiAPI APIKeyの有無を検証し、Gemini APIを利用するための設定が有効であるかを確認します。
+// isGeminiAPI は、Gemini API を使う設定（APIKey）があるかを返します。
 func (c Config) isGeminiAPI() bool {
 	return c.APIKey != ""
 }
 
-// isIncompleteVertex ProjectIDまたはLocationIDの有無を確認し、Vertex AIの設定漏れがないかを検証します。
+// isIncompleteVertex は、Vertex AI の設定が片方だけ埋まっているかを返します。
+// 両方空（Gemini API を使う）でも両方揃っている場合でもなく、書きかけの状態です。
 func (c Config) isIncompleteVertex() bool {
 	hasAny := c.ProjectID != "" || c.LocationID != ""
 	return hasAny && !c.isVertexAI()
@@ -162,13 +175,13 @@ type retryParams struct {
 
 // retryParams は未設定項目をデフォルトで補完したリトライ設定を返します。
 //
-// MaxRetries が 0 の場合は DefaultMaxRetries にフォールバックします
-// （netarmor の retry.WithMaxRetries は 0 を「リトライしない」と解釈するため、
-// この分岐がないと未設定時にリトライが行われなくなります）。
+// MaxRetries は nil のときだけ DefaultMaxRetries に倒します。明示された 0 は
+// そのまま netarmor へ渡り「リトライしない」になります。時間系の項目が orDefault で
+// 「正の値でなければ既定値」なのと扱いが違うのは、回数には 0 が意味を持つためです。
 func (c Config) retryParams() retryParams {
-	maxRetries := c.MaxRetries
-	if maxRetries == 0 {
-		maxRetries = DefaultMaxRetries
+	maxRetries := DefaultMaxRetries
+	if c.MaxRetries != nil {
+		maxRetries = *c.MaxRetries
 	}
 
 	return retryParams{

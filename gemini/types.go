@@ -1,6 +1,8 @@
 package gemini
 
 import (
+	"fmt"
+	"math"
 	"time"
 
 	"google.golang.org/genai"
@@ -26,7 +28,7 @@ const (
 type PersonGeneration string
 
 const (
-	// PersonGenerationUnspecified は設定を省略し、APIのデフォルトに委ねます。
+	// PersonGenerationUnspecified は設定を省略し、API のデフォルトに委ねます。
 	PersonGenerationUnspecified PersonGeneration = ""
 	// PersonGenerationAllowAll はすべての人物生成を許可します（キャラクター生成に推奨）。
 	PersonGenerationAllowAll PersonGeneration = "ALLOW_ALL"
@@ -139,13 +141,10 @@ func (o *GenerateOptions) HasImageConfig() bool {
 	return o.AspectRatio != "" || o.ImageSize != "" || o.PersonGeneration != PersonGenerationUnspecified
 }
 
-// ThinkingLevel は、思考量の段階指定です。
-//
-// genai.ThinkingLevel の別名で、下の定数と合わせて使うことで、思考量を選ぶためだけに
-// genai SDK を import する必要をなくします。genai の値をそのまま渡すこともできます。
+// ThinkingLevel は、思考量の段階指定です（genai.ThinkingLevel の別名）。
 type ThinkingLevel = genai.ThinkingLevel
 
-// 思考量の段階です。値は genai の対応する定数と同一です。
+// 思考量の段階です。
 const (
 	// ThinkingUnspecified はモデルのデフォルトに委ねます。
 	ThinkingUnspecified ThinkingLevel = genai.ThinkingLevelUnspecified
@@ -159,13 +158,10 @@ const (
 	ThinkingHigh ThinkingLevel = genai.ThinkingLevelHigh
 )
 
-// SafetyThreshold は、安全フィルタのブロック閾値です。
-//
-// genai.HarmBlockThreshold の別名で、下の定数と合わせて使うことで、閾値を選ぶためだけに
-// genai SDK を import する必要をなくします。genai の値をそのまま渡すこともできます。
+// SafetyThreshold は、安全フィルタのブロック閾値です（genai.HarmBlockThreshold の別名）。
 type SafetyThreshold = genai.HarmBlockThreshold
 
-// 安全フィルタのブロック閾値です。値は genai の対応する定数と同一です。
+// 安全フィルタのブロック閾値です。
 const (
 	// SafetyBlockNone は、安全フィルタによるブロックを行いません。
 	SafetyBlockNone SafetyThreshold = genai.HarmBlockThresholdBlockNone
@@ -180,11 +176,7 @@ const (
 	SafetyOff SafetyThreshold = genai.HarmBlockThresholdOff
 )
 
-// Schema は、構造化出力（GenerateOptions.ResponseSchema）のスキーマです。
-//
-// genai.Schema の別名で、下の SchemaType 定数と合わせて使うことで、スキーマを
-// 書くためだけに genai SDK を import する必要をなくします。genai の値をそのまま
-// 渡すこともできます。
+// Schema は、構造化出力（GenerateOptions.ResponseSchema）のスキーマです（genai.Schema の別名）。
 //
 // map[string]any で書く ResponseJSONSchema と違い、フィールド名がコンパイル時に
 // 検査されます。JSON Schema の $ref のようにこの型で表現しきれない場合にだけ
@@ -205,7 +197,7 @@ type Schema = genai.Schema
 // SchemaType は、スキーマのデータ型です（genai.Type の別名）。
 type SchemaType = genai.Type
 
-// スキーマのデータ型です。値は genai の対応する定数と同一です。
+// スキーマのデータ型です。
 const (
 	// TypeString は文字列です。
 	TypeString SchemaType = genai.TypeString
@@ -231,4 +223,17 @@ func NewSafetySettings(threshold SafetyThreshold) []*genai.SafetySetting {
 		{Category: genai.HarmCategorySexuallyExplicit, Threshold: threshold},
 		{Category: genai.HarmCategoryDangerousContent, Threshold: threshold},
 	}
+}
+
+// seedToPtrInt32 は *int64 を SDK 用の *int32 に変換します。
+func seedToPtrInt32(s *int64) (*int32, error) {
+	if s == nil {
+		return nil, nil
+	}
+
+	if *s > math.MaxInt32 || *s < math.MinInt32 {
+		return nil, fmt.Errorf("%w (入力値: %d)", ErrInvalidSeed, *s)
+	}
+
+	return new(int32(*s)), nil
 }

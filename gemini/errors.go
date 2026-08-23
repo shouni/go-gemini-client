@@ -51,7 +51,7 @@ var (
 )
 
 // APIResponseError は、コンテンツのブロックや空のレスポンスなど、
-// APIとの通信成功後に発生した論理的なエラーを示します。
+// API との通信成功後に発生した論理的なエラーを示します。
 //
 // errors.Is により ErrBlocked / ErrEmptyResponse のいずれかと比較できます。
 //

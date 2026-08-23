@@ -1,5 +1,10 @@
 // Package gemini は、Gemini API / Vertex AI 向けの genai SDK をラップし、
-// リトライやFile APIアップロードを備えたクライアントを提供します。
+// リトライや File API アップロードを備えたクライアントを提供します。
+//
+// 公開 API に genai の型は現れません。設定値の型と定数は別名として再エクスポート
+// してあるため（ThinkingLevel / SafetyThreshold / Schema / SchemaType /
+// VideoReferenceType）、値を選ぶためだけに genai SDK を import する必要はありません。
+// 別名なので、genai の値をそのまま渡しても構いません。
 package gemini
 
 import (
@@ -36,15 +41,6 @@ type Client struct {
 	filePollingInterval time.Duration
 	filePollingTimeout  time.Duration
 	asyncCleanupTimeout time.Duration
-}
-
-// runWithRetry は共通のリトライ設定を適用して操作を実行します。
-// retry.RunValue を使うことで、呼び出し側がクロージャで結果を受け渡す必要がなくなります。
-func runWithRetry[T any](ctx context.Context, opts []retry.Option, name string, op func() (T, error)) (T, error) {
-	all := make([]retry.Option, 0, len(opts)+2)
-	all = append(all, opts...)
-	all = append(all, retry.WithName(name), retry.WithShouldRetry(shouldRetry))
-	return retry.RunValue(ctx, op, all...)
 }
 
 // NewClient は提供された設定に基づいて、新しい Gemini クライアントを作成します。
@@ -263,7 +259,7 @@ func responseFromGenAI(resp *genai.GenerateContentResponse) (*Response, error) {
 		return nil, err
 	}
 
-	// MIME タイプで振り分ける。Images / Audios は Attachments の部分集合で、
+	// MIME type で振り分ける。Images / Audios は Attachments の部分集合で、
 	// 型を意識せずバイト列だけ欲しい呼び出し側のための入口です。
 	attachments := extractInlineData(resp)
 	var images [][]byte

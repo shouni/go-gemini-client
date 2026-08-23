@@ -8,13 +8,11 @@ import (
 	"google.golang.org/genai"
 )
 
-// VideoReferenceType は、referenceImages に渡した画像がどう使われるかです。
-//
-// genai.VideoGenerationReferenceType の別名で、下の定数と合わせて使うことで、
-// 参照の種別を選ぶためだけに genai SDK を import する必要をなくします。
+// VideoReferenceType は、referenceImages に渡した画像がどう使われるかです
+// （genai.VideoGenerationReferenceType の別名）。
 type VideoReferenceType = genai.VideoGenerationReferenceType
 
-// 参照画像の種別です。値は genai の対応する定数と同一です。
+// 参照画像の種別です。
 const (
 	// VideoReferenceAsset は、画像に写っている被写体（キャラクター・小物など）を
 	// 動画に登場させるための参照です。最大3枚まで指定できます。
