@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"google.golang.org/genai"
@@ -80,27 +81,33 @@ func (f *fakeFileClient) Delete(_ context.Context, _ string, _ *genai.DeleteFile
 // --- waitForFileActive のテスト ---
 // ポーリングロジックがコンテキストキャンセルやタイムアウトを正しく扱うかを検証します。
 func TestWaitForFileActive_ContextCancel(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	fake := &fakeFileClient{}
-	client := &Client{
-		fileClient:          fake,
-		filePollingInterval: 10 * time.Millisecond,
-		filePollingTimeout:  time.Second,
-	}
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		fake := &fakeFileClient{}
+		client := &Client{
+			fileClient:          fake,
+			filePollingInterval: 10 * time.Millisecond,
+			filePollingTimeout:  time.Second,
+		}
 
-	// 実行後すぐにキャンセル
-	go func() {
-		time.Sleep(10 * time.Millisecond)
+		// ポーリングが待ちに入ってからキャンセルする。Wait はバブル内の他のゴルーチンが
+		// 継続的にブロックした時点で返るので、待ち時間の見積もりが要らない。
+		errCh := make(chan error, 1)
+		go func() {
+			_, err := client.waitForFileActive(ctx, "test-file")
+			errCh <- err
+		}()
+		synctest.Wait()
 		cancel()
-	}()
 
-	_, err := client.waitForFileActive(ctx, "test-file")
-	if err == nil {
-		t.Error("コンテキストがキャンセルされたのにエラーが返されませんでした")
-	}
-	if !errors.Is(err, context.Canceled) {
-		t.Errorf("エラーが context.Canceled ではありません: %v", err)
-	}
+		err := <-errCh
+		if err == nil {
+			t.Error("コンテキストがキャンセルされたのにエラーが返されませんでした")
+		}
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("エラーが context.Canceled ではありません: %v", err)
+		}
+	})
 }
 
 func TestWaitForFileActive_ImmediateActive(t *testing.T) {
