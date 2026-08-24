@@ -5,6 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/shouni/go-gemini-client/gemini"
@@ -79,60 +80,56 @@ func (c *blockingGeminiClient) IsVertexAI() bool {
 }
 
 func TestLyriaLyricistSingleflightDeduplicatesConcurrentCalls(t *testing.T) {
-	ctx := context.Background()
-	client := newBlockingGeminiClient()
-	client.partsResp = &gemini.Response{
-		Text: `{"title":"Song","theme":"Theme","lyrics":"Words","keywords":["one"]}`,
-	}
-
-	lyricist := &lyriaTextGenerator{
-		aiClient:     client,
-		promptGen:    staticPromptGen{lyricsPrompt: "lyrics prompt"},
-		defaultModel: "gemini-flash",
-	}
-
-	// 修正：文字列ではなく *CollectedContent を渡す
-	input := &CollectedContent{
-		Prompt: "same input",
-	}
-
-	const callers = 5
-	results := make([]*LyricsDraft, callers)
-	errs := make([]error, callers)
-	var wg sync.WaitGroup
-	wg.Add(callers)
-	for i := range callers {
-		go func(i int) {
-			defer wg.Done()
-			results[i], errs[i] = lyricist.GenerateLyrics(ctx, AIModels{
-				TextModel:   "gemini-flash",
-				ComposeMode: "default",
-			}, input)
-		}(i)
-	}
-
-	require.Eventually(t, func() bool {
-		select {
-		case <-client.partsStartedCh:
-			return true
-		default:
-			return false
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		client := newBlockingGeminiClient()
+		client.partsResp = &gemini.Response{
+			Text: `{"title":"Song","theme":"Theme","lyrics":"Words","keywords":["one"]}`,
 		}
-	}, time.Second, time.Millisecond)
 
-	time.Sleep(20 * time.Millisecond)
-	close(client.releasePartsCh)
-	wg.Wait()
+		lyricist := &lyriaTextGenerator{
+			aiClient:     client,
+			promptGen:    staticPromptGen{lyricsPrompt: "lyrics prompt"},
+			defaultModel: "gemini-flash",
+		}
 
-	require.Equal(t, int32(1), client.partsCalls.Load())
-	for _, err := range errs {
-		require.NoError(t, err)
-	}
+		// 修正：文字列ではなく *CollectedContent を渡す
+		input := &CollectedContent{
+			Prompt: "same input",
+		}
 
-	// ディープコピーの検証（shared reference による事故を防いでいるか）
-	require.NotSame(t, results[0], results[1])
-	results[0].Keywords[0] = "changed"
-	assert.Equal(t, "one", results[1].Keywords[0])
+		const callers = 5
+		results := make([]*LyricsDraft, callers)
+		errs := make([]error, callers)
+		var wg sync.WaitGroup
+		wg.Add(callers)
+		for i := range callers {
+			go func(i int) {
+				defer wg.Done()
+				results[i], errs[i] = lyricist.GenerateLyrics(ctx, AIModels{
+					TextModel:   "gemini-flash",
+					ComposeMode: "default",
+				}, input)
+			}(i)
+		}
+
+		// 全員が in-flight に合流するまで待つ。Wait はバブル内の他のゴルーチンが
+		// すべて継続的にブロックした時点で返るので、「始まったか」のポーリングと
+		// 「合流したはず」の待ち時間の両方が要らなくなる。
+		synctest.Wait()
+		close(client.releasePartsCh)
+		wg.Wait()
+
+		require.Equal(t, int32(1), client.partsCalls.Load())
+		for _, err := range errs {
+			require.NoError(t, err)
+		}
+
+		// ディープコピーの検証（shared reference による事故を防いでいるか）
+		require.NotSame(t, results[0], results[1])
+		results[0].Keywords[0] = "changed"
+		assert.Equal(t, "one", results[1].Keywords[0])
+	})
 }
 
 // TestDoSingleflightCallerCancelDoesNotKillSharedExecution は、リーダー（最初の呼び出し元）が
@@ -142,52 +139,54 @@ func TestLyriaLyricistSingleflightDeduplicatesConcurrentCalls(t *testing.T) {
 func TestDoSingleflightCallerCancelDoesNotKillSharedExecution(t *testing.T) {
 	t.Parallel()
 
-	var group singleflight.Group
-	release := make(chan struct{})
-	started := make(chan struct{})
-	var once sync.Once
-	fn := func(execCtx context.Context) (string, error) {
-		once.Do(func() { close(started) })
-		select {
-		case <-release:
-			return "ok", nil
-		case <-execCtx.Done():
-			return "", execCtx.Err()
+	synctest.Test(t, func(t *testing.T) {
+		var group singleflight.Group
+		release := make(chan struct{})
+		started := make(chan struct{})
+		var once sync.Once
+		fn := func(execCtx context.Context) (string, error) {
+			once.Do(func() { close(started) })
+			select {
+			case <-release:
+				return "ok", nil
+			case <-execCtx.Done():
+				return "", execCtx.Err()
+			}
 		}
-	}
 
-	// リーダーA: 実行開始後にキャンセルする
-	ctxA, cancelA := context.WithCancel(context.Background())
-	errA := make(chan error, 1)
-	go func() {
-		_, err := doSingleflight(ctxA, &group, "same-key", 0, fn)
-		errA <- err
-	}()
-	<-started
+		// リーダーA: 実行開始後にキャンセルする
+		ctxA, cancelA := context.WithCancel(context.Background())
+		errA := make(chan error, 1)
+		go func() {
+			_, err := doSingleflight(ctxA, &group, "same-key", 0, fn)
+			errA <- err
+		}()
+		<-started
 
-	// 相乗りB: 同一キーで in-flight に合流し、完走を期待する
-	type result struct {
-		val string
-		err error
-	}
-	resB := make(chan result, 1)
-	go func() {
-		v, err := doSingleflight(context.Background(), &group, "same-key", 0, fn)
-		resB <- result{v, err}
-	}()
+		// 相乗りB: 同一キーで in-flight に合流し、完走を期待する
+		type result struct {
+			val string
+			err error
+		}
+		resB := make(chan result, 1)
+		go func() {
+			v, err := doSingleflight(context.Background(), &group, "same-key", 0, fn)
+			resB <- result{v, err}
+		}()
 
-	time.Sleep(20 * time.Millisecond) // B が合流するまで待つ
-	cancelA()
-	require.ErrorIs(t, <-errA, context.Canceled)
+		synctest.Wait() // B が合流するまで待つ
+		cancelA()
+		require.ErrorIs(t, <-errA, context.Canceled)
 
-	close(release)
-	select {
-	case r := <-resB:
-		require.NoError(t, r.err, "shared execution was killed by leader's cancel")
-		require.Equal(t, "ok", r.val)
-	case <-time.After(5 * time.Second):
-		t.Fatal("caller B timed out")
-	}
+		close(release)
+		select {
+		case r := <-resB:
+			require.NoError(t, r.err, "shared execution was killed by leader's cancel")
+			require.Equal(t, "ok", r.val)
+		case <-time.After(5 * time.Second):
+			t.Fatal("caller B timed out")
+		}
+	})
 }
 
 func TestCloneMusicRecipeDeepCopiesPointerFields(t *testing.T) {
@@ -230,121 +229,120 @@ func TestCloneMusicRecipeDeepCopiesPointerFields(t *testing.T) {
 }
 
 func TestLyriaAudioGeneratorSingleflightDeduplicatesConcurrentCalls(t *testing.T) {
-	ctx := context.Background()
-	client := newBlockingGeminiClient()
-	client.partsResp = &gemini.Response{Audios: [][]byte{{1, 2, 3}}}
-	seed := int64(7)
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		client := newBlockingGeminiClient()
+		client.partsResp = &gemini.Response{Audios: [][]byte{{1, 2, 3}}}
+		seed := int64(7)
 
-	generator := &lyriaAudioGenerator{
-		aiClient:          client,
-		defaultLyriaModel: "lyria-3",
-		limiter:           rate.NewLimiter(rate.Inf, 0),
-		promptBuilder:     fixedAudioPromptBuilder{fullSong: "full prompt"},
-		converter:         noopPhoneticConverter{},
-	}
-
-	recipe := &MusicRecipe{
-		Title:       "Song",
-		Mood:        "Bright",
-		Tempo:       140,
-		Instruments: []string{"synth"},
-		Sections: []MusicSection{
-			{Name: "Verse", Duration: 30, Prompt: "pulse"},
-		},
-		AIModels: AIModels{Seed: &seed},
-	}
-
-	images := []ImagePayload{
-		{Data: []byte("fake-image"), MIMEType: "image/png"},
-	}
-
-	const callers = 5
-	results := make([][]byte, callers)
-	errs := make([]error, callers)
-	var wg sync.WaitGroup
-	wg.Add(callers)
-	for i := range callers {
-		go func(i int) {
-			defer wg.Done()
-			// 修正：引数に images を追加
-			results[i], errs[i] = generator.GenerateAudio(ctx, recipe, images)
-		}(i)
-	}
-
-	require.Eventually(t, func() bool {
-		select {
-		case <-client.partsStartedCh:
-			return true
-		default:
-			return false
+		generator := &lyriaAudioGenerator{
+			aiClient:          client,
+			defaultLyriaModel: "lyria-3",
+			limiter:           rate.NewLimiter(rate.Inf, 0),
+			promptBuilder:     fixedAudioPromptBuilder{fullSong: "full prompt"},
+			converter:         noopPhoneticConverter{},
 		}
-	}, time.Second, time.Millisecond)
 
-	time.Sleep(20 * time.Millisecond)
-	close(client.releasePartsCh)
-	wg.Wait()
+		recipe := &MusicRecipe{
+			Title:       "Song",
+			Mood:        "Bright",
+			Tempo:       140,
+			Instruments: []string{"synth"},
+			Sections: []MusicSection{
+				{Name: "Verse", Duration: 30, Prompt: "pulse"},
+			},
+			AIModels: AIModels{Seed: &seed},
+		}
 
-	// singleflight により、1回しか API が呼ばれていないことを確認
-	require.Equal(t, int32(1), client.partsCalls.Load())
-	for _, err := range errs {
-		require.NoError(t, err)
-	}
+		images := []ImagePayload{
+			{Data: []byte("fake-image"), MIMEType: "image/png"},
+		}
 
-	// 修正後の cloneBytes の検証：バイナリが独立したメモリ領域であることを確認
-	results[0][0] = 9
-	assert.Equal(t, byte(1), results[1][0])
+		const callers = 5
+		results := make([][]byte, callers)
+		errs := make([]error, callers)
+		var wg sync.WaitGroup
+		wg.Add(callers)
+		for i := range callers {
+			go func(i int) {
+				defer wg.Done()
+				// 修正：引数に images を追加
+				results[i], errs[i] = generator.GenerateAudio(ctx, recipe, images)
+			}(i)
+		}
+
+		// 全員が in-flight に合流するまで待つ。Wait はバブル内の他のゴルーチンが
+		// すべて継続的にブロックした時点で返るので、「始まったか」のポーリングと
+		// 「合流したはず」の待ち時間の両方が要らなくなる。
+		synctest.Wait()
+		close(client.releasePartsCh)
+		wg.Wait()
+
+		// singleflight により、1回しか API が呼ばれていないことを確認
+		require.Equal(t, int32(1), client.partsCalls.Load())
+		for _, err := range errs {
+			require.NoError(t, err)
+		}
+
+		// 修正後の cloneBytes の検証：バイナリが独立したメモリ領域であることを確認
+		results[0][0] = 9
+		assert.Equal(t, byte(1), results[1][0])
+	})
 }
 
 func TestLyriaAudioGeneratorSingleflightSeparatesDifferentImages(t *testing.T) {
-	ctx := context.Background()
-	client := newBlockingGeminiClient()
-	client.partsResp = &gemini.Response{Audios: [][]byte{{1, 2, 3}}}
-	seed := int64(7)
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		client := newBlockingGeminiClient()
+		client.partsResp = &gemini.Response{Audios: [][]byte{{1, 2, 3}}}
+		seed := int64(7)
 
-	generator := &lyriaAudioGenerator{
-		aiClient:          client,
-		defaultLyriaModel: "lyria-3",
-		limiter:           rate.NewLimiter(rate.Inf, 0),
-		promptBuilder:     fixedAudioPromptBuilder{fullSong: "full prompt"},
-		converter:         noopPhoneticConverter{},
-	}
+		generator := &lyriaAudioGenerator{
+			aiClient:          client,
+			defaultLyriaModel: "lyria-3",
+			limiter:           rate.NewLimiter(rate.Inf, 0),
+			promptBuilder:     fixedAudioPromptBuilder{fullSong: "full prompt"},
+			converter:         noopPhoneticConverter{},
+		}
 
-	recipe := &MusicRecipe{
-		Title:       "Song",
-		Mood:        "Bright",
-		Tempo:       140,
-		Instruments: []string{"synth"},
-		Sections: []MusicSection{
-			{Name: "Verse", Duration: 30, Prompt: "pulse"},
-		},
-		AIModels: AIModels{Seed: &seed},
-	}
+		recipe := &MusicRecipe{
+			Title:       "Song",
+			Mood:        "Bright",
+			Tempo:       140,
+			Instruments: []string{"synth"},
+			Sections: []MusicSection{
+				{Name: "Verse", Duration: 30, Prompt: "pulse"},
+			},
+			AIModels: AIModels{Seed: &seed},
+		}
 
-	imagesA := []ImagePayload{{Data: []byte("image-a"), MIMEType: "image/png"}}
-	imagesB := []ImagePayload{{Data: []byte("image-b"), MIMEType: "image/png"}}
+		imagesA := []ImagePayload{{Data: []byte("image-a"), MIMEType: "image/png"}}
+		imagesB := []ImagePayload{{Data: []byte("image-b"), MIMEType: "image/png"}}
 
-	var wg sync.WaitGroup
-	errs := make([]error, 2)
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		_, errs[0] = generator.GenerateAudio(ctx, recipe, imagesA)
-	}()
-	go func() {
-		defer wg.Done()
-		_, errs[1] = generator.GenerateAudio(ctx, recipe, imagesB)
-	}()
+		var wg sync.WaitGroup
+		errs := make([]error, 2)
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			_, errs[0] = generator.GenerateAudio(ctx, recipe, imagesA)
+		}()
+		go func() {
+			defer wg.Done()
+			_, errs[1] = generator.GenerateAudio(ctx, recipe, imagesB)
+		}()
 
-	require.Eventually(t, func() bool {
-		return client.partsCalls.Load() == 2
-	}, time.Second, time.Millisecond)
+		// 両方の呼び出しが in-flight に入るまで待つ。異なる画像は相乗りしないので、
+		// この時点で API 呼び出しはちょうど 2 回になっている。
+		synctest.Wait()
+		require.Equal(t, int32(2), client.partsCalls.Load())
 
-	close(client.releasePartsCh)
-	wg.Wait()
+		close(client.releasePartsCh)
+		wg.Wait()
 
-	for _, err := range errs {
-		require.NoError(t, err)
-	}
+		for _, err := range errs {
+			require.NoError(t, err)
+		}
+	})
 }
 
 // TestSingleflightKeyIncludesSeed は、seed がキーに含まれることを検証します。
