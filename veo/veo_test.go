@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/shouni/go-gemini-client/gemini"
@@ -141,59 +142,66 @@ func TestGeneratePropagatesStartError(t *testing.T) {
 // 成功したら連続失敗のカウントが戻ることを検証します。生成済みの動画を一時的な
 // ネットワーク障害で取り逃がさないための挙動です。
 func TestWaitToleratesTransientPollErrors(t *testing.T) {
-	generator := &fakeGenerator{
-		polls: []pollResponse{
-			{err: errors.New("temporary failure")},
-			{err: errors.New("temporary failure")},
-			{op: running("operations/abc")}, // ここでカウントがリセットされる
-			{err: errors.New("temporary failure")},
-			{err: errors.New("temporary failure")},
-			{op: finished("operations/abc", "gs://bucket/out.mp4")},
-		},
-	}
-	client := newTestClient(t, generator, WithMaxPollErrors(3))
+	synctest.Test(t, func(t *testing.T) {
+		generator := &fakeGenerator{
+			polls: []pollResponse{
+				{err: errors.New("temporary failure")},
+				{err: errors.New("temporary failure")},
+				{op: running("operations/abc")}, // ここでカウントがリセットされる
+				{err: errors.New("temporary failure")},
+				{err: errors.New("temporary failure")},
+				{op: finished("operations/abc", "gs://bucket/out.mp4")},
+			},
+		}
+		client := newTestClient(t, generator, WithMaxPollErrors(3))
 
-	got, err := client.Wait(context.Background(), "operations/abc")
-	if err != nil {
-		t.Fatalf("Wait() error = %v", err)
-	}
-	if _, ok := got.First(); !ok {
-		t.Fatal("expected a video in the result")
-	}
+		got, err := client.Wait(context.Background(), "operations/abc")
+		if err != nil {
+			t.Fatalf("Wait() error = %v", err)
+		}
+		if _, ok := got.First(); !ok {
+			t.Fatal("expected a video in the result")
+		}
+	})
 }
 
 // TestWaitStopsAfterConsecutivePollErrors は、確認が続けて失敗したらタイムアウトまで
 // 粘らずに打ち切ることを検証します。原因は Unwrap で辿れます。
 func TestWaitStopsAfterConsecutivePollErrors(t *testing.T) {
-	sentinel := errors.New("permission denied")
-	generator := &fakeGenerator{polls: []pollResponse{{err: sentinel}}}
-	client := newTestClient(t, generator, WithMaxPollErrors(3))
+	synctest.Test(t, func(t *testing.T) {
+		sentinel := errors.New("permission denied")
+		generator := &fakeGenerator{polls: []pollResponse{{err: sentinel}}}
+		client := newTestClient(t, generator, WithMaxPollErrors(3))
 
-	_, err := client.Wait(context.Background(), "operations/abc")
-	if !errors.Is(err, ErrPollFailed) {
-		t.Fatalf("Wait() error = %v, want ErrPollFailed", err)
-	}
-	if !errors.Is(err, sentinel) {
-		t.Errorf("Wait() error = %v, want the underlying cause to be reachable", err)
-	}
-	if generator.pollCalls != 3 {
-		t.Errorf("poll calls = %d, want to stop at the limit of 3", generator.pollCalls)
-	}
+		_, err := client.Wait(context.Background(), "operations/abc")
+		if !errors.Is(err, ErrPollFailed) {
+			t.Fatalf("Wait() error = %v, want ErrPollFailed", err)
+		}
+		if !errors.Is(err, sentinel) {
+			t.Errorf("Wait() error = %v, want the underlying cause to be reachable", err)
+		}
+		if generator.pollCalls != 3 {
+			t.Errorf("poll calls = %d, want to stop at the limit of 3", generator.pollCalls)
+		}
+	})
 }
 
 // TestWaitTimesOut は、生成が終わらないまま上限時間に達した場合に打ち切ることを
 // 検証します。
 func TestWaitTimesOut(t *testing.T) {
-	generator := &fakeGenerator{polls: []pollResponse{{op: running("operations/abc")}}}
-	client := newTestClient(t, generator, WithPollTimeout(20*time.Millisecond))
+	// バブル内の仮想時計で上限時間を経過させます。実時間は消費しません。
+	synctest.Test(t, func(t *testing.T) {
+		generator := &fakeGenerator{polls: []pollResponse{{op: running("operations/abc")}}}
+		client := newTestClient(t, generator, WithPollTimeout(20*time.Millisecond))
 
-	_, err := client.Wait(context.Background(), "operations/abc")
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("Wait() error = %v, want a deadline error", err)
-	}
-	if errors.Is(err, ErrPollFailed) {
-		t.Error("timing out is not a polling failure; it should not report ErrPollFailed")
-	}
+		_, err := client.Wait(context.Background(), "operations/abc")
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("Wait() error = %v, want a deadline error", err)
+		}
+		if errors.Is(err, ErrPollFailed) {
+			t.Error("timing out is not a polling failure; it should not report ErrPollFailed")
+		}
+	})
 }
 
 // TestWaitStopsWhenCallerCancels は、呼び出し側の context が終了したら即座に
