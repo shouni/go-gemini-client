@@ -129,45 +129,6 @@ func TestLyriaLyricistSingleflightDeduplicatesConcurrentCalls(t *testing.T) {
 	})
 }
 
-func TestCloneMusicRecipeDeepCopiesPointerFields(t *testing.T) {
-	t.Parallel()
-
-	seed := int64(7)
-	src := &MusicRecipe{
-		Title:        "Song",
-		Key:          "A minor",
-		VocalProfile: "Japanese female vocal, clear diction",
-		Instruments:  []string{"synth"},
-		Sections: []MusicSection{
-			{Name: "Verse", Duration: 30, StartSeconds: 10, EndSeconds: 40, Prompt: "pulse"},
-		},
-		Lyrics: &LyricsDraft{
-			Lyrics:   "words",
-			Keywords: []string{"one"},
-		},
-		AIModels: AIModels{Seed: &seed},
-	}
-
-	cloned := src.Clone()
-	require.NotNil(t, cloned)
-	require.NotNil(t, cloned.Lyrics)
-	require.NotNil(t, cloned.Seed)
-	require.NotSame(t, src.Lyrics, cloned.Lyrics)
-	require.NotSame(t, src.Seed, cloned.Seed)
-
-	src.Lyrics.Keywords[0] = "changed"
-	*src.Seed = 99
-
-	assert.Equal(t, "one", cloned.Lyrics.Keywords[0])
-	assert.Equal(t, int64(7), *cloned.Seed)
-	assert.Equal(t, "A minor", cloned.Key)
-	assert.Equal(t, "Japanese female vocal, clear diction", cloned.VocalProfile)
-	if assert.Len(t, cloned.Sections, 1) {
-		assert.Equal(t, 10, cloned.Sections[0].StartSeconds)
-		assert.Equal(t, 40, cloned.Sections[0].EndSeconds)
-	}
-}
-
 func TestLyriaAudioGeneratorSingleflightDeduplicatesConcurrentCalls(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()

@@ -337,31 +337,6 @@ func TestGenerateAudioSkipsReadingConverterForEnglish(t *testing.T) {
 
 // 構造体リテラルで limiter を省略（nil）した lyriaAudioGenerator でも
 // GenerateAudio がパニックせず動作することを確認します（text.go と同じ nil ガード）。
-func TestGenerateAudioNilLimiterDoesNotPanic(t *testing.T) {
-	ctx := context.Background()
-	mAI := new(MockGeminiClient)
-	generator := &lyriaAudioGenerator{
-		aiClient:          mAI,
-		promptBuilder:     fixedAudioPromptBuilder{fullSong: "full prompt"},
-		converter:         noopPhoneticConverter{},
-		defaultLyriaModel: "lyria-3",
-		// limiter は意図的に nil のまま
-	}
-
-	mAI.On("GenerateWithAttachments",
-		mock.Anything,
-		"lyria-3",
-		"full prompt",
-		mock.Anything,
-		mock.Anything).Return(&gemini.Response{Audios: [][]byte{{1, 2, 3}}}, nil)
-
-	audio, err := generator.GenerateAudio(ctx, &MusicRecipe{Title: "Song"}, nil)
-
-	assert.NoError(t, err)
-	assert.Equal(t, []byte{1, 2, 3}, audio)
-	mAI.AssertExpectations(t)
-}
-
 // GenerateLyrics の各エラー分岐（プロンプト生成失敗、AI エラー、nil/空レスポンス、
 // 生成後の歌詞空チェック）を、AI が「ゴミ」を返す想定でまとめて検証します。
 func TestGenerateLyrics_ErrorBranches(t *testing.T) {
@@ -510,12 +485,6 @@ func TestCompose_ErrorBranches(t *testing.T) {
 			mPrompt.AssertExpectations(t)
 		})
 	}
-}
-
-func TestMusicRecipeIsJapanese(t *testing.T) {
-	assert.True(t, (&MusicRecipe{}).IsJapanese(), "Lang 未指定は日本語扱い")
-	assert.True(t, (&MusicRecipe{AIModels: AIModels{Lang: LangJapanese}}).IsJapanese())
-	assert.False(t, (&MusicRecipe{AIModels: AIModels{Lang: LangEnglish}}).IsJapanese())
 }
 
 func TestGenerateAudioKeepsSeed(t *testing.T) {

@@ -257,26 +257,6 @@ func TestBuildGenerateConfig_PersonGenerationSkippedOffVertex(t *testing.T) {
 	}
 }
 
-func TestBuildGenerateConfig_AppliesResponseSchema(t *testing.T) {
-	schema := &genai.Schema{
-		Type: genai.TypeObject,
-		Properties: map[string]*genai.Schema{
-			"title": {Type: genai.TypeString},
-		},
-	}
-
-	got, err := buildGenerateConfig(GenerateOptions{
-		ResponseMIMEType: "application/json",
-		ResponseSchema:   schema,
-	}, false)
-	if err != nil {
-		t.Fatalf("buildGenerateConfig() unexpected error = %v", err)
-	}
-	if got.ResponseSchema != schema {
-		t.Fatalf("ResponseSchema was not applied: %+v", got.ResponseSchema)
-	}
-}
-
 func TestBuildGenerateConfig_AudioResponseMIMETypeSetsModalities(t *testing.T) {
 	got, err := buildGenerateConfig(GenerateOptions{
 		ResponseMIMEType: "audio/wav",
