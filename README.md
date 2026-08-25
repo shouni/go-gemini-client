@@ -333,7 +333,17 @@ opts := gemini.GenerateOptions{
 
 ### 構造化出力の後処理
 
-`ResponseSchema` + `ResponseMIMEType: "application/json"` による構造化出力（constrained decoding）を使っても、モデルが完結した JSON の後に余分な閉じ括弧や説明テキストを継ぎ足すことが実際にあります。`json.Unmarshal` の前段で `gemini.CleanJSONResponse(raw)` を通すと、こうした末尾ノイズを除去・補正できます。トップレベルが配列（`[...]`）のスキーマにも対応しています。
+`ResponseSchema` + `ResponseMIMEType: "application/json"` による構造化出力（constrained decoding）を使っても、モデルは次の形で JSON を崩すことがあります。**どれも応答を返しきったあとの話なので、API の再試行では直りません。** `json.Unmarshal` の前段で `gemini.CleanJSONResponse(raw)` を通してください。
+
+- Markdown のフェンス（```` ```json … ``` ````）で包む
+- 完結した JSON の後ろに説明文や余分な閉じ括弧を継ぎ足す
+- `}` の代わりに `)` などで閉じる
+- 文字列の中でバックスラッシュをエスケープし忘れる（正規表現やパスを引用したとき）
+- 文字列の中に改行やタブを生のまま入れる（複数行の本文を引用したとき）
+
+後ろの 2 つは、**台本の抜粋・歌詞・台詞のように複数行の本文を JSON に載せる用途で特に起きます。** トップレベルが配列（`[...]`）のスキーマにも対応しています。
+
+**既に解釈できる入力は 1 バイトも変えません。** 補修しても妥当な JSON にならなければ入力をそのまま返すので、呼び出し側のエラーメッセージは元の壊れ方を指したままになります。
 
 ```go
 resp, err := client.GenerateWithAttachments(ctx, model, prompt, nil, opts)
