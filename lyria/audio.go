@@ -3,11 +3,9 @@ package lyria
 import (
 	"context"
 	"fmt"
-	"time"
 
+	"github.com/shouni/go-gemini-client/callguard"
 	"github.com/shouni/go-gemini-client/gemini"
-	"golang.org/x/sync/singleflight"
-	"golang.org/x/time/rate"
 )
 
 // lyriaAudioGenerator は MusicRecipe を Lyria に渡し、音声バイナリを生成します。
@@ -16,9 +14,10 @@ type lyriaAudioGenerator struct {
 	promptBuilder     AudioPromptBuilder
 	converter         ReadingConverter
 	defaultLyriaModel string
-	limiter           *rate.Limiter // nil はレート制限なし（テストが構造体リテラルで直接構築するため）
-	execTimeout       time.Duration
-	group             singleflight.Group
+	// guard は発射間隔と 1 回あたりの上限時間です。
+	// nil は「制限なし・既定の上限時間」（テストが構造体リテラルで直接構築するため）。
+	guard *callguard.Guard
+	group callguard.Group
 }
 
 // GenerateAudio は MusicRecipe 全体を 1 回の Lyria 呼び出しで音声化します。
@@ -37,14 +36,8 @@ func (g *lyriaAudioGenerator) GenerateAudio(ctx context.Context, recipe *MusicRe
 		promptText = g.converter.ConvertToReading(promptText)
 	}
 	imageHash := calculateImagesHash(images)
-	key := singleflightKey("audio-full", targetModel, promptText, singleflightSeedKey(recipe.Seed), imageHash)
-	audio, err := doSingleflight(ctx, &g.group, key, g.execTimeout, func(execCtx context.Context) ([]byte, error) {
-		if g.limiter != nil {
-			if err := g.limiter.Wait(execCtx); err != nil {
-				return nil, err
-			}
-		}
-
+	key := callguard.Key("audio-full", targetModel, promptText, callguard.SeedKey(recipe.Seed), imageHash)
+	audio, err := callguard.Do(ctx, &g.group, g.guard, key, func(execCtx context.Context) ([]byte, error) {
 		resp, err := g.aiClient.GenerateWithAttachments(
 			execCtx,
 			targetModel,

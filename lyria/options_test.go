@@ -29,7 +29,7 @@ func TestWithExecTimeout(t *testing.T) {
 		assert.Equal(t, 90*time.Second, got.execTimeout)
 	})
 
-	t.Run("未指定なら 0 で、doSingleflight 側の既定値にフォールバックすること", func(t *testing.T) {
+	t.Run("未指定なら 0 で、callguard 側の既定値にフォールバックすること", func(t *testing.T) {
 		got := applyOptions()
 		assert.Zero(t, got.execTimeout)
 	})

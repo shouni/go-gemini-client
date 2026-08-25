@@ -55,6 +55,7 @@
 | `github.com/shouni/go-gemini-client/music` | 楽曲構成のデータ型（`Recipe` / `Section` / `LyricsDraft` / `AIModels`）。依存を持たない葉パッケージです。 |
 | `github.com/shouni/go-gemini-client/lyria` | 歌詞生成 → 作曲レシピ生成 → Lyria 音声生成の 3 段。`lyria.New` は `gemini.Generator` を受け取ります。 |
 | `github.com/shouni/go-gemini-client/veo` | Veo 動画生成の投函と完了待ち。`veo.New` は `gemini.VideoGenerator` を受け取ります。 |
+| `github.com/shouni/go-gemini-client/callguard` | AI 呼び出しへの発射間隔・1 回あたりの上限時間・重複排除（singleflight）。下流のキットが自前で持っていた実装の共通化先です。 |
 
 ### 楽曲型 (`music`) と lyria ワークフロー
 
@@ -71,6 +72,32 @@ clone := r.Clone() // スライスやポインタも複製する深いコピー
 型だけを別パッケージへ切り出しているのは、レシピを読み書きするだけの下流サービスが、レート制限や singleflight を伴うワークフロー本体まで輸入せずに済むようにするためです。`lyria.MusicRecipe` / `MusicSection` / `LyricsDraft` / `AIModels` は `music` の型の別名なので、既存の表記もそのまま使えます。
 
 ワークフロー（`lyria.Workflow`）は `GenerateLyrics` → `Compose` → `GenerateAudio` の 3 段を個別のメソッドとして公開します。段の間に構造検証などの品質ゲートを挟めるようにするためで、**一括実行の入口は意図的にありません**（品質ゲートは製品ごとに違うため、束ねても呼び出し側で分解し直すことになります）。
+
+### 呼び出しガード (`callguard`)
+
+高価な AI 呼び出しに、**発射間隔**（クォータ保護）・**1 回あたりの上限時間**・**同一内容の同時実行の重複排除**をまとめて掛けます。`lyria` が内部で使っているほか、`go-comic-kit` / `go-veo-orchestrator` のようにこのクライアントの上でワークフローを組むキットが、同じ機構を書き写さずに済むよう公開しています。
+
+```go
+guard := callguard.New(
+    callguard.WithRateInterval(6*time.Second), // 毎分 10 回まで
+    callguard.WithExecTimeout(5*time.Minute),
+)
+
+var group callguard.Group // ゼロ値で使えます
+
+key := callguard.Key("image", model, prompt, callguard.SeedKey(seed))
+resp, err := callguard.Do(ctx, &group, guard, key, func(execCtx context.Context) (*Response, error) {
+    return inner.Generate(execCtx, req)
+})
+```
+
+設計上の要点は 3 つです。
+
+- **クォータはプロジェクト単位で、操作の種類ごとではありません。** テキスト生成と画像生成で別々に絞っても意味がないため、ワークフロー全体で `Guard` を 1 つ共有し、重複排除の単位（`Group`）だけを呼び出しの種類ごとに分けます。
+- **発射間隔の待機は上限時間の外側です。** 待たされた時間を 1 回あたりの上限時間に数えると、混雑しているだけでタイムアウトします。
+- **上限時間に「無制限」はありません。** 共有実行は呼び出し元の context から切り離されるため（リーダーの離脱が相乗り側を巻き添えにしないため）、これが唯一の打ち切り手段です。無制限にすると、応答の返らない 1 回が同じキーの後続を永久に待たせます。
+
+戻り値は相乗りした全員で共有されます。呼び出し側が書き換える可能性があるものは複製してから返してください。
 
 ---
 

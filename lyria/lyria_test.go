@@ -11,7 +11,6 @@ import (
 	"github.com/shouni/go-gemini-client/gemini"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"golang.org/x/time/rate"
 )
 
 // --- Mocks ---
@@ -528,7 +527,6 @@ func TestGenerateAudioKeepsSeed(t *testing.T) {
 		promptBuilder:     fixedAudioPromptBuilder{fullSong: "full prompt"},
 		converter:         noopPhoneticConverter{},
 		defaultLyriaModel: "lyria-3",
-		limiter:           rate.NewLimiter(rate.Inf, 0),
 	}
 
 	mAI.On("GenerateWithAttachments",

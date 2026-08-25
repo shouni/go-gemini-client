@@ -12,8 +12,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/shouni/go-gemini-client/callguard"
 	"github.com/shouni/go-gemini-client/gemini"
-	"golang.org/x/time/rate"
 )
 
 // Workflow がパッケージ公開インターフェースを満たすことをコンパイル時に保証します。
@@ -51,8 +51,16 @@ func New(aiClient gemini.Generator, promptGen TextPromptGenerator, audioPromptBu
 		return nil, fmt.Errorf("%w: LyriaModel is required but not set", ErrWorkflowConfig)
 	}
 
-	limiter := rate.NewLimiter(rate.Every(opts.rateInterval), 1)
-	textLimiter := rate.NewLimiter(rate.Every(opts.textRateInterval), 1)
+	// 発射間隔はテキスト（Gemini）と音声（Lyria）で別々に持ちます。別のモデルの
+	// 別のクォータなので、片方の混雑でもう片方を絞る理由がありません。
+	textGuard := callguard.New(
+		callguard.WithRateInterval(opts.textRateInterval),
+		callguard.WithExecTimeout(opts.execTimeout),
+	)
+	audioGuard := callguard.New(
+		callguard.WithRateInterval(opts.rateInterval),
+		callguard.WithExecTimeout(opts.execTimeout),
+	)
 
 	converter := opts.readingConverter
 	if converter == nil {
@@ -63,8 +71,7 @@ func New(aiClient gemini.Generator, promptGen TextPromptGenerator, audioPromptBu
 		aiClient:     aiClient,
 		promptGen:    promptGen,
 		defaultModel: opts.geminiModel,
-		limiter:      textLimiter,
-		execTimeout:  opts.execTimeout,
+		guard:        textGuard,
 	}
 
 	return &Workflow{
@@ -74,8 +81,7 @@ func New(aiClient gemini.Generator, promptGen TextPromptGenerator, audioPromptBu
 			aiClient:          aiClient,
 			promptBuilder:     audioPromptBuilder,
 			converter:         converter,
-			limiter:           limiter,
-			execTimeout:       opts.execTimeout,
+			guard:             audioGuard,
 			defaultLyriaModel: opts.lyriaModel,
 		},
 	}, nil
