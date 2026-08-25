@@ -86,11 +86,9 @@ func TestDoDeduplicatesConcurrentCalls(t *testing.T) {
 
 		var wg sync.WaitGroup
 		for range 5 {
-			wg.Add(1)
-			go func() { defer wg.Done(); _, _ = Do(context.Background(), &group, nil, "same", fn) }()
+			wg.Go(func() { ; _, _ = Do(context.Background(), &group, nil, "same", fn) })
 		}
-		wg.Add(1)
-		go func() { defer wg.Done(); _, _ = Do(context.Background(), &group, nil, "other", fn) }()
+		wg.Go(func() { ; _, _ = Do(context.Background(), &group, nil, "other", fn) })
 
 		synctest.Wait()
 		assert.Equal(t, int32(2), calls.Load(), "同一キーは 1 回、別キーはもう 1 回")
@@ -121,13 +119,11 @@ func TestDoWaitsForRateIntervalOutsideExecTimeout(t *testing.T) {
 
 		var wg sync.WaitGroup
 		for i := range 2 {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				_, errs[i] = Do(context.Background(), &group, guard, "key-"+string(rune('a'+i)),
 					func(context.Context) (int, error) { return i, nil })
 				elapsed[i] = time.Since(start)
-			}()
+			})
 		}
 		wg.Wait()
 

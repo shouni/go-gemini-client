@@ -111,8 +111,13 @@ type GenerateOptions struct {
 }
 
 // Ptr は任意の値へのポインタを返すヘルパーです。
-// GenerateOptions のポインタ型フィールドにリテラルを設定する際に使用します。
-func Ptr[T any](v T) *T { return &v }
+//
+// **Go 1.26 の new(式) がこれを不要にしました。** 新しいコードでは
+// new(float32(0.5)) のように直接書いてください。go:fix inline を付けてあるので、
+// 呼び出し側で go fix を走らせれば自動で置き換わります。互換のために残しています。
+//
+//go:fix inline
+func Ptr[T any](v T) *T { return new(v) }
 
 // Response は生成結果のラッパーです。
 type Response struct {

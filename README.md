@@ -259,7 +259,7 @@ File API の呼び出しにも `Config` のリトライ設定が効きます。
 | `APIKey` | Gemini API キー。Google AI Studio / Gemini API で利用します。 | - |
 | `ProjectID` | Google Cloud プロジェクト ID。Vertex AI で利用します。 | - |
 | `LocationID` | Vertex AI のリージョン。例: `asia-northeast1`, `us-central1` | - |
-| `MaxRetries` | 最大リトライ回数（`*uint64`）。`nil` は既定値、`Ptr[uint64](0)` は再試行しない | `1` |
+| `MaxRetries` | 最大リトライ回数（`*uint64`）。`nil` は既定値、`new(uint64(0))` は再試行しない | `1` |
 | `InitialDelay` | リトライ開始時の待機時間 | `30s` |
 | `MaxDelay` | リトライ待機時間の上限 | `120s` |
 | `FilePollingInterval` | File API の状態確認間隔 | `2s` |
@@ -278,16 +278,16 @@ File API の呼び出しにも `Config` のリトライ設定が効きます。
 
 ## 🧪 生成オプション (`gemini.GenerateOptions`)
 
-ゼロ値が意味を持つ項目（`Temperature: 0` = 最も決定的、`ThinkingBudget: 0` = 思考無効）は、「未設定」と区別するためポインタ型です。設定には `gemini.Ptr` ヘルパーを使います。
+ゼロ値が意味を持つ項目（`Temperature: 0` = 最も決定的、`ThinkingBudget: 0` = 思考無効）は、「未設定」と区別するためポインタ型です。設定には Go 1.26 の `new(式)` を使います（`new(float32(0))`）。`gemini.Ptr` は互換のため残していますが、`go fix` で `new` へ置き換わります。
 
 | 設定項目 | 役割 |
 | --- | --- |
 | `SystemPrompt` | System instruction を指定します。 |
-| `Temperature` | 出力のランダム性（`*float32`）。`Ptr[float32](0)` で最も決定的。nil で SDK デフォルト。 |
+| `Temperature` | 出力のランダム性（`*float32`）。`new(float32(0))` で最も決定的。nil で SDK デフォルト。 |
 | `TopP` / `TopK` | サンプリング範囲の制御（`*float32`）。nil で SDK デフォルト。 |
 | `MaxOutputTokens` | 生成する最大トークン数。0 で SDK デフォルト。 |
 | `StopSequences` | 生成を打ち切る文字列のリスト。 |
-| `ThinkingBudget` | 思考トークンの上限（`*int32`）。`Ptr[int32](0)` で思考を無効化しコストとレイテンシを抑えます。nil でモデル既定。有効範囲はモデル依存です。 |
+| `ThinkingBudget` | 思考トークンの上限（`*int32`）。`new(int32(0))` で思考を無効化しコストとレイテンシを抑えます。nil でモデル既定。有効範囲はモデル依存です。 |
 | `ThinkingLevel` | 思考量の段階指定。モデル非依存で移植性が高い方の指定方法で、`ThinkingBudget` と併用した場合はこちらが優先されます。 |
 | `IncludeThoughts` | true にすると思考サマリが `Response.Thoughts` に入ります（`Text` には含まれません）。 |
 | `AspectRatio` / `ImageSize` | 画像生成時のアスペクト比とサイズ。 |

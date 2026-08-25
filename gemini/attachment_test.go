@@ -98,7 +98,7 @@ func TestAttachmentPartsRejectsMissingMIMEType(t *testing.T) {
 
 func TestGenerateWithAttachmentsSendsPromptAndInlineData(t *testing.T) {
 	fake := &fakeModelClient{}
-	client := &Client{modelClient: fake, retryOpts: Config{MaxRetries: Ptr[uint64](1)}.buildRetryOptions()}
+	client := &Client{modelClient: fake, retryOpts: Config{MaxRetries: new(uint64(1))}.buildRetryOptions()}
 
 	resp, err := client.GenerateWithAttachments(context.Background(), "gemini-test", "review this",
 		[]Attachment{{MIMEType: "audio/mpeg", Data: []byte("song")}}, GenerateOptions{})
@@ -128,7 +128,7 @@ func TestGenerateWithAttachmentsSendsPromptAndInlineData(t *testing.T) {
 // through the public entry point, so structured output works without touching genai.
 func TestGenerateWithAttachmentsAppliesGenerateOptions(t *testing.T) {
 	fake := &fakeModelClient{}
-	client := &Client{modelClient: fake, retryOpts: Config{MaxRetries: Ptr[uint64](1)}.buildRetryOptions()}
+	client := &Client{modelClient: fake, retryOpts: Config{MaxRetries: new(uint64(1))}.buildRetryOptions()}
 
 	schema := map[string]any{"type": "object"}
 	_, err := client.GenerateWithAttachments(context.Background(), "gemini-test", "prompt",
@@ -149,7 +149,7 @@ func TestGenerateWithAttachmentsAppliesGenerateOptions(t *testing.T) {
 // TestGenerateWithAttachmentsValidatesModelName verifies the shared validation still runs; the
 // attachment entry point must not become a way to skip it.
 func TestGenerateWithAttachmentsValidatesModelName(t *testing.T) {
-	client := &Client{modelClient: &fakeModelClient{}, retryOpts: Config{MaxRetries: Ptr[uint64](1)}.buildRetryOptions()}
+	client := &Client{modelClient: &fakeModelClient{}, retryOpts: Config{MaxRetries: new(uint64(1))}.buildRetryOptions()}
 
 	_, err := client.GenerateWithAttachments(context.Background(), "", "prompt",
 		[]Attachment{{MIMEType: "audio/mpeg", Data: []byte("song")}}, GenerateOptions{})

@@ -12,7 +12,7 @@ import (
 func ExampleGenerateOptions() {
 	opts := gemini.GenerateOptions{
 		SystemPrompt:    "あなたは簡潔に答えるアシスタントです。",
-		Temperature:     gemini.Ptr[float32](0), // 0 = 最も決定的
+		Temperature:     new(float32(0)), // 0 = 最も決定的
 		MaxOutputTokens: 1024,
 		StopSequences:   []string{"###"},
 	}
@@ -25,11 +25,11 @@ func ExampleGenerateOptions() {
 // ThinkingBudget を 0 にして明示的に無効化できます。
 func ExampleGenerateOptions_thinking() {
 	// 思考を無効化してレイテンシを抑える
-	fast := gemini.GenerateOptions{ThinkingBudget: gemini.Ptr[int32](0)}
+	fast := gemini.GenerateOptions{ThinkingBudget: new(int32(0))}
 
 	// 思考を有効にしつつサマリも受け取る（Response.Thoughts に入る）
 	verbose := gemini.GenerateOptions{
-		ThinkingBudget:  gemini.Ptr[int32](2048),
+		ThinkingBudget:  new(int32(2048)),
 		IncludeThoughts: true,
 	}
 

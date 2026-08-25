@@ -151,7 +151,7 @@ func TestLyriaAudioGeneratorSingleflightDeduplicatesConcurrentCalls(t *testing.T
 			Sections: []MusicSection{
 				{Name: "Verse", Duration: 30, Prompt: "pulse"},
 			},
-			AIModels: AIModels{Seed: &seed},
+			Seed: &seed,
 		}
 
 		images := []ImagePayload{
@@ -212,7 +212,7 @@ func TestLyriaAudioGeneratorSingleflightSeparatesDifferentImages(t *testing.T) {
 			Sections: []MusicSection{
 				{Name: "Verse", Duration: 30, Prompt: "pulse"},
 			},
-			AIModels: AIModels{Seed: &seed},
+			Seed: &seed,
 		}
 
 		imagesA := []ImagePayload{{Data: []byte("image-a"), MIMEType: "image/png"}}

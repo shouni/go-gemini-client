@@ -66,7 +66,7 @@ func (b fixedAudioPromptBuilder) BuildFullSong(*MusicRecipe) string {
 	return b.fullSong
 }
 
-func jsonGenerateOptionsWithSeed(t *testing.T, wantSeed *int64) interface{} {
+func jsonGenerateOptionsWithSeed(t *testing.T, wantSeed *int64) any {
 	t.Helper()
 	return mock.MatchedBy(func(opts gemini.GenerateOptions) bool {
 		if opts.ResponseMIMEType != "application/json" {
@@ -83,7 +83,7 @@ func jsonGenerateOptionsWithSeed(t *testing.T, wantSeed *int64) interface{} {
 	})
 }
 
-func audioGenerateOptionsWithSeed(t *testing.T, wantSeed *int64, wantMIMEType string) interface{} {
+func audioGenerateOptionsWithSeed(t *testing.T, wantSeed *int64, wantMIMEType string) any {
 	t.Helper()
 	return mock.MatchedBy(func(opts gemini.GenerateOptions) bool {
 		if opts.ResponseMIMEType != wantMIMEType {
@@ -328,7 +328,7 @@ func TestGenerateAudioSkipsReadingConverterForEnglish(t *testing.T) {
 		mock.Anything,
 		mock.Anything).Return(&gemini.Response{Audios: [][]byte{{1, 2, 3}}}, nil)
 
-	audio, err := workflow.GenerateAudio(ctx, &MusicRecipe{Title: "Song", AIModels: AIModels{Lang: LangEnglish}}, nil)
+	audio, err := workflow.GenerateAudio(ctx, &MusicRecipe{Title: "Song", Lang: LangEnglish}, nil)
 
 	assert.NoError(t, err)
 	assert.Equal(t, []byte{1, 2, 3}, audio)
@@ -505,7 +505,7 @@ func TestGenerateAudioKeepsSeed(t *testing.T) {
 		mock.Anything,
 		audioGenerateOptionsWithSeed(t, &seed, "")).Return(&gemini.Response{Audios: [][]byte{{1, 2, 3}}}, nil)
 
-	audio, err := generator.GenerateAudio(ctx, &MusicRecipe{Title: "Song", AIModels: AIModels{Seed: &seed}}, nil)
+	audio, err := generator.GenerateAudio(ctx, &MusicRecipe{Title: "Song", Seed: &seed}, nil)
 
 	assert.NoError(t, err)
 	assert.Equal(t, []byte{1, 2, 3}, audio)
