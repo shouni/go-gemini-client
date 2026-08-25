@@ -6,13 +6,10 @@ import (
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
-	"time"
 
 	"github.com/shouni/go-gemini-client/gemini"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sync/singleflight"
-	"golang.org/x/time/rate"
 )
 
 // staticPromptGen はテスト用の固定プロンプト生成器です。
@@ -132,102 +129,6 @@ func TestLyriaLyricistSingleflightDeduplicatesConcurrentCalls(t *testing.T) {
 	})
 }
 
-// TestDoSingleflightCallerCancelDoesNotKillSharedExecution は、リーダー（最初の呼び出し元）が
-// キャンセルしても共有実行が打ち切られず、相乗りしている呼び出し元が完走できることを検証します。
-// 旧実装（実行用 context を呼び出し元側で生成し defer cancel()）ではリーダーの早期リターンが
-// 共有実行を巻き添えにするため、このテストは失敗します。
-func TestDoSingleflightCallerCancelDoesNotKillSharedExecution(t *testing.T) {
-	t.Parallel()
-
-	synctest.Test(t, func(t *testing.T) {
-		var group singleflight.Group
-		release := make(chan struct{})
-		started := make(chan struct{})
-		var once sync.Once
-		fn := func(execCtx context.Context) (string, error) {
-			once.Do(func() { close(started) })
-			select {
-			case <-release:
-				return "ok", nil
-			case <-execCtx.Done():
-				return "", execCtx.Err()
-			}
-		}
-
-		// リーダーA: 実行開始後にキャンセルする
-		ctxA, cancelA := context.WithCancel(context.Background())
-		errA := make(chan error, 1)
-		go func() {
-			_, err := doSingleflight(ctxA, &group, "same-key", 0, fn)
-			errA <- err
-		}()
-		<-started
-
-		// 相乗りB: 同一キーで in-flight に合流し、完走を期待する
-		type result struct {
-			val string
-			err error
-		}
-		resB := make(chan result, 1)
-		go func() {
-			v, err := doSingleflight(context.Background(), &group, "same-key", 0, fn)
-			resB <- result{v, err}
-		}()
-
-		synctest.Wait() // B が合流するまで待つ
-		cancelA()
-		require.ErrorIs(t, <-errA, context.Canceled)
-
-		close(release)
-		select {
-		case r := <-resB:
-			require.NoError(t, r.err, "shared execution was killed by leader's cancel")
-			require.Equal(t, "ok", r.val)
-		case <-time.After(5 * time.Second):
-			t.Fatal("caller B timed out")
-		}
-	})
-}
-
-func TestCloneMusicRecipeDeepCopiesPointerFields(t *testing.T) {
-	t.Parallel()
-
-	seed := int64(7)
-	src := &MusicRecipe{
-		Title:        "Song",
-		Key:          "A minor",
-		VocalProfile: "Japanese female vocal, clear diction",
-		Instruments:  []string{"synth"},
-		Sections: []MusicSection{
-			{Name: "Verse", Duration: 30, StartSeconds: 10, EndSeconds: 40, Prompt: "pulse"},
-		},
-		Lyrics: &LyricsDraft{
-			Lyrics:   "words",
-			Keywords: []string{"one"},
-		},
-		AIModels: AIModels{Seed: &seed},
-	}
-
-	cloned := src.Clone()
-	require.NotNil(t, cloned)
-	require.NotNil(t, cloned.Lyrics)
-	require.NotNil(t, cloned.Seed)
-	require.NotSame(t, src.Lyrics, cloned.Lyrics)
-	require.NotSame(t, src.Seed, cloned.Seed)
-
-	src.Lyrics.Keywords[0] = "changed"
-	*src.Seed = 99
-
-	assert.Equal(t, "one", cloned.Lyrics.Keywords[0])
-	assert.Equal(t, int64(7), *cloned.Seed)
-	assert.Equal(t, "A minor", cloned.Key)
-	assert.Equal(t, "Japanese female vocal, clear diction", cloned.VocalProfile)
-	if assert.Len(t, cloned.Sections, 1) {
-		assert.Equal(t, 10, cloned.Sections[0].StartSeconds)
-		assert.Equal(t, 40, cloned.Sections[0].EndSeconds)
-	}
-}
-
 func TestLyriaAudioGeneratorSingleflightDeduplicatesConcurrentCalls(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
@@ -238,7 +139,6 @@ func TestLyriaAudioGeneratorSingleflightDeduplicatesConcurrentCalls(t *testing.T
 		generator := &lyriaAudioGenerator{
 			aiClient:          client,
 			defaultLyriaModel: "lyria-3",
-			limiter:           rate.NewLimiter(rate.Inf, 0),
 			promptBuilder:     fixedAudioPromptBuilder{fullSong: "full prompt"},
 			converter:         noopPhoneticConverter{},
 		}
@@ -300,7 +200,6 @@ func TestLyriaAudioGeneratorSingleflightSeparatesDifferentImages(t *testing.T) {
 		generator := &lyriaAudioGenerator{
 			aiClient:          client,
 			defaultLyriaModel: "lyria-3",
-			limiter:           rate.NewLimiter(rate.Inf, 0),
 			promptBuilder:     fixedAudioPromptBuilder{fullSong: "full prompt"},
 			converter:         noopPhoneticConverter{},
 		}
@@ -343,28 +242,4 @@ func TestLyriaAudioGeneratorSingleflightSeparatesDifferentImages(t *testing.T) {
 			require.NoError(t, err)
 		}
 	})
-}
-
-// TestSingleflightKeyIncludesSeed は、seed がキーに含まれることを検証します。
-// 含まれないと、同一プロンプトで seed 違いの同時呼び出しが 1 回の生成結果を
-// 共有してしまい、seed による出力の作り分けが効かなくなります。
-func TestSingleflightKeyIncludesSeed(t *testing.T) {
-	seedA := int64(1)
-	seedB := int64(2)
-
-	keyNil := singleflightKey("lyrics", "model", "prompt", singleflightSeedKey(nil))
-	keyA := singleflightKey("lyrics", "model", "prompt", singleflightSeedKey(&seedA))
-	keyB := singleflightKey("lyrics", "model", "prompt", singleflightSeedKey(&seedB))
-
-	if keyA == keyB {
-		t.Error("seed 違いで同じキーになっています")
-	}
-	if keyA == keyNil || keyB == keyNil {
-		t.Error("seed 指定ありと nil で同じキーになっています")
-	}
-
-	// 同一入力では安定していること（キャッシュが効かなくなるため）
-	if keyA != singleflightKey("lyrics", "model", "prompt", singleflightSeedKey(&seedA)) {
-		t.Error("同一入力でキーが安定していません")
-	}
 }

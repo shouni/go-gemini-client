@@ -158,16 +158,8 @@ func TestBuildGenerateConfig_SamplingParams(t *testing.T) {
 		}
 	})
 
-	t.Run("未指定なら ThinkingConfig を送らないこと", func(t *testing.T) {
-		cfg, err := buildGenerateConfig(GenerateOptions{}, false)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if cfg.ThinkingConfig != nil {
-			t.Error("未指定時に ThinkingConfig を送るとモデル既定の思考挙動を上書きしてしまいます")
-		}
-	})
-
+	// 思考設定そのものの網羅は TestBuildThinkingConfig にあります。ここは
+	// buildGenerateConfig がその結果を素通しするかだけを見ます。
 	t.Run("ThinkingBudget 0 で思考を無効化できること", func(t *testing.T) {
 		cfg, err := buildGenerateConfig(GenerateOptions{ThinkingBudget: Ptr[int32](0)}, false)
 		if err != nil {
@@ -178,16 +170,6 @@ func TestBuildGenerateConfig_SamplingParams(t *testing.T) {
 		}
 		if cfg.ThinkingConfig.ThinkingBudget == nil || *cfg.ThinkingConfig.ThinkingBudget != 0 {
 			t.Errorf("ThinkingBudget = %v, want 0", cfg.ThinkingConfig.ThinkingBudget)
-		}
-	})
-
-	t.Run("IncludeThoughts のみでも ThinkingConfig を送ること", func(t *testing.T) {
-		cfg, err := buildGenerateConfig(GenerateOptions{IncludeThoughts: true}, false)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if cfg.ThinkingConfig == nil || !cfg.ThinkingConfig.IncludeThoughts {
-			t.Error("IncludeThoughts が反映されていません")
 		}
 	})
 }

@@ -124,8 +124,8 @@ func TestGenerateWithAttachmentsSendsPromptAndInlineData(t *testing.T) {
 	}
 }
 
-// TestGenerateWithAttachmentsAppliesGenerateOptions verifies the options path is shared with
-// GenerateWithParts, so structured output works the same through either entry point.
+// TestGenerateWithAttachmentsAppliesGenerateOptions verifies GenerateOptions reaches the SDK
+// through the public entry point, so structured output works without touching genai.
 func TestGenerateWithAttachmentsAppliesGenerateOptions(t *testing.T) {
 	fake := &fakeModelClient{}
 	client := &Client{modelClient: fake, retryOpts: Config{MaxRetries: Ptr[uint64](1)}.buildRetryOptions()}
@@ -161,15 +161,6 @@ func TestGenerateWithAttachmentsValidatesModelName(t *testing.T) {
 
 // TestAttachmentMatchesGenaiBlobShape guards the assumption behind the type: an Attachment carries
 // exactly what an inline genai.Blob needs, so no information is lost by using it instead.
-func TestAttachmentMatchesGenaiBlobShape(t *testing.T) {
-	attachment := Attachment{MIMEType: "audio/mpeg", Data: []byte("song")}
-	blob := genai.Blob{MIMEType: attachment.MIMEType, Data: attachment.Data}
-
-	if blob.MIMEType != attachment.MIMEType || string(blob.Data) != string(attachment.Data) {
-		t.Error("Attachment no longer maps cleanly onto genai.Blob")
-	}
-}
-
 // TestAttachmentPartsBuildsFileDataForURIs verifies a URI reference becomes a FileData part rather
 // than inline bytes. Vertex AI can read gs:// directly and the File API hands back a URI, so both
 // paths need to be expressible without the caller touching genai.

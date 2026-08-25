@@ -91,8 +91,8 @@ func (e *APIResponseError) Unwrap() error { return e.Reason }
 //
 // genai.FinishReason は文字列型で、Go のゼロ値は "" ですが、SDK 定数の
 // FinishReasonUnspecified は "FINISH_REASON_UNSPECIFIED" という別の値です。
-// ストリーミングの中間チャンクなど終了理由を含まないレスポンスではゼロ値になるため、
-// 両方を「未設定」として扱わないとブロック扱いに誤判定します。
+// サーバーは終了理由を含まないレスポンスを返すことがあり、そのときゼロ値になるため、
+// 両方を「未設定」として扱わないと正常な応答をブロック扱いに誤判定します。
 func isUnsetFinishReason(r genai.FinishReason) bool {
 	return r == "" || r == genai.FinishReasonUnspecified
 }

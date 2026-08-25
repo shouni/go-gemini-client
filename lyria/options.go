@@ -52,7 +52,9 @@ func WithTextRateInterval(value time.Duration) Option {
 
 // WithExecTimeout sets the per-execution timeout applied to singleflight-shared
 // generation calls. The execution context is detached from the caller, so this is
-// the only thing that bounds a shared run. Zero (unset) means 5 minutes.
+// the only thing that bounds a shared run. Zero (unset) means callguard.DefaultExecTimeout.
+//
+// The rate-limit wait is not counted against it (see callguard.Do).
 func WithExecTimeout(value time.Duration) Option {
 	return func(opts *options) {
 		opts.execTimeout = value

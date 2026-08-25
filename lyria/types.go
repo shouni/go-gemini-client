@@ -11,14 +11,15 @@ import (
 // singleflight を伴うこのパッケージ）を輸入せずに済むようにするためです。
 // ここでの別名は既存の lyria.MusicRecipe 等の表記をそのまま使い続けられるように
 // する互換層で、どちらの名前で書いても同じ型です。
+// 型そのものの説明は music 側にあります。ここへ書き写すと必ずずれます。
 type (
-	// AIModels selects the text and audio models used by Lyria generation.
+	// AIModels は music.AIModels の別名です。
 	AIModels = music.AIModels
-	// LyricsDraft is the structured lyric output used by recipe composition.
+	// LyricsDraft は music.LyricsDraft の別名です。
 	LyricsDraft = music.LyricsDraft
-	// MusicRecipe describes the song structure and generation settings.
+	// MusicRecipe は music.Recipe の別名です。
 	MusicRecipe = music.Recipe
-	// MusicSection describes one section of a song.
+	// MusicSection は music.Section の別名です。
 	MusicSection = music.Section
 )
 

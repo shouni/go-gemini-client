@@ -5,11 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
+	"github.com/shouni/go-gemini-client/callguard"
 	"github.com/shouni/go-gemini-client/gemini"
-	"golang.org/x/sync/singleflight"
-	"golang.org/x/time/rate"
 )
 
 const defaultComposeMode = "default"
@@ -19,9 +17,9 @@ type lyriaTextGenerator struct {
 	aiClient     gemini.Generator
 	promptGen    TextPromptGenerator
 	defaultModel string
-	limiter      *rate.Limiter // nil はレート制限なし（テストが構造体リテラルで直接構築するため）
-	execTimeout  time.Duration
-	group        singleflight.Group
+	// guard は nil で「制限なし・既定の上限時間」を意味します。
+	guard *callguard.Guard
+	group callguard.Group
 }
 
 // resolveModel は呼び出しごとのモデル指定があればそれを、なければデフォルトモデルを返します。
@@ -38,14 +36,8 @@ func (g *lyriaTextGenerator) resolveModel(override string) string {
 func generateJSON[T any](ctx context.Context, g *lyriaTextGenerator, kind, model, prompt string, seed *int64, schema *gemini.Schema) (*T, error) {
 	// seed は生成結果を変えるため、必ずキーに含める。含め忘れると同一プロンプトで
 	// seed 違いの同時呼び出しが 1 回の生成結果を共有してしまう。
-	key := singleflightKey(kind, model, prompt, singleflightSeedKey(seed))
-	return doSingleflight(ctx, &g.group, key, g.execTimeout, func(execCtx context.Context) (*T, error) {
-		if g.limiter != nil {
-			if err := g.limiter.Wait(execCtx); err != nil {
-				return nil, err
-			}
-		}
-
+	key := callguard.Key(kind, model, prompt, callguard.SeedKey(seed))
+	return callguard.Do(ctx, &g.group, g.guard, key, func(execCtx context.Context) (*T, error) {
 		resp, err := g.aiClient.GenerateWithAttachments(execCtx, model, prompt, nil, buildJSONGenerateOptions(seed, schema))
 		if err != nil {
 			return nil, fmt.Errorf("%s generation failed (model: %s): %w", kind, model, err)

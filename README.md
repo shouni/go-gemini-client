@@ -8,42 +8,18 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/shouni/go-gemini-client.svg)](https://pkg.go.dev/github.com/shouni/go-gemini-client)
 [![Status](https://img.shields.io/badge/Status-Active-brightgreen)](#)
 
-## 🎯 概要: Net Armor 統合型ハイブリッド Gemini クライアント
+## 🎯 概要
 
-**Go Gemini Client** は、[shouni/netarmor](https://github.com/shouni/netarmor) をリトライ基盤に採用した、**Google Gemini API / Vertex AI** 向けの Go ライブラリです。
-
-ひとつのクライアントで、API Key 方式の **Gemini API (Google AI Studio)** と、Google Cloud 認証を使う **Vertex AI** を切り替えて利用できます。テキスト生成だけでなく、GCS URI や File API を使ったマルチモーダル入力、画像・音声レスポンス、Lyria による音楽生成、Veo による動画生成も扱えます。
-
-**設計の中心は「`google.golang.org/genai` を公開 API に出さないこと」です。** 生成・構造化出力・安全設定・思考量・動画生成のいずれも、SDK を import せずに書けます。利用側のモックも 1 メソッドで済みます。
+**Go Gemini Client** は、**Google Gemini API / Vertex AI** 向けの Go ライブラリです。テキスト生成に加えて、GCS URI や File API を使ったマルチモーダル入力、画像・音声レスポンス、Lyria による音楽生成、Veo による動画生成を扱えます。
 
 ---
 
-## 💎 特徴と設計思想
+## 💎 設計の要点
 
-### 🤖 ハイブリッド・バックエンド・サポート
-
-- **Dual Backend**: `APIKey` 方式と `ProjectID` / `LocationID` 方式の両方に対応。
-- **Vertex AI 連携**: Cloud Run などの環境ではサービスアカウントや Application Default Credentials を利用できます。
-- **GCS 直接参照**: Vertex AI では `gs://` URI を `gemini.Attachment{URI: ...}` として直接プロンプトに含められます。
-
-### 🛡️ 堅牢な AI クライアント (`gemini`)
-
-- **高度なリトライ戦略**: `netarmor` の retry を利用し、一時的なネットワーク障害や API 側の一過性エラーを指数バックオフで再試行します。
-- **リトライ不要エラーの判定**: セーフティフィルタによるブロックや空レスポンスなど、再試行しても解決しにくい API レスポンスエラーを識別します。
-- **決定論的な制御**: `Seed` により、生成結果の再現性を必要とするワークフローをサポートします。
-- **型安全なエラー判定**: 設定不備や入力不備はセンチネルエラーとして公開しており、`errors.Is` で判定できます。
-
-### 📁 高度なリソース管理
-
-- **File API サポート**: ファイルアップロード後、利用可能な `Active` 状態になるまで自動でポーリングします。
-- **自動クリーンアップ**: Active 化に失敗した File API オブジェクトはバックグラウンドで削除を試みます。
-- **レスポンス抽出**: テキスト、生成画像、生成音声、MIME type 付きの添付 (`Attachments`)、トークン使用量 (`Usage`) を `gemini.Response` にまとめて返します。
-
-### 🎬 動画生成 (`veo`) と音楽生成 (`lyria`)
-
-- **長時間実行オペレーションの完走**: `veo` が投函から完了までのポーリング、タイムアウト、一時的な失敗の許容を引き受けます。投函と完了待ちを別の実行に分けることもできます。
-- **入力の事前検証**: Veo が併用できない入力（video と image など）を送信前に弾きます。
-- **音楽生成の 3 段**: `lyria` が歌詞生成 → 作曲レシピ → Lyria 音声生成を、段ごとに分けて公開します。
+- **genai SDK を公開 API に出しません。** 生成・構造化出力・安全設定・思考量・動画生成のいずれも SDK を import せずに書けます。利用側のモックも 1 メソッドで済みます。
+- **ひとつのクライアントで 2 つのバックエンド。** `APIKey`（Gemini API）と `ProjectID` / `LocationID`（Vertex AI）を排他で受け取り、`gs://` の扱いなどバックエンド差は内部で吸収します。
+- **失敗の種類を型で区別します。** 設定不備・入力不備・安全フィルタによるブロックはすべてセンチネルエラーで、`errors.Is` で分類できます。リトライしても直らない失敗は再試行しません。
+- **長時間実行と重複呼び出しを引き受けます。** `veo` が動画生成のポーリングと一時的失敗の許容を、`callguard` が発射間隔・上限時間・同一内容の重複排除を持ちます。
 
 ---
 
@@ -55,6 +31,7 @@
 | `github.com/shouni/go-gemini-client/music` | 楽曲構成のデータ型（`Recipe` / `Section` / `LyricsDraft` / `AIModels`）。依存を持たない葉パッケージです。 |
 | `github.com/shouni/go-gemini-client/lyria` | 歌詞生成 → 作曲レシピ生成 → Lyria 音声生成の 3 段。`lyria.New` は `gemini.Generator` を受け取ります。 |
 | `github.com/shouni/go-gemini-client/veo` | Veo 動画生成の投函と完了待ち。`veo.New` は `gemini.VideoGenerator` を受け取ります。 |
+| `github.com/shouni/go-gemini-client/callguard` | AI 呼び出しへの発射間隔・1 回あたりの上限時間・重複排除（singleflight）。下流のキットが自前で持っていた実装の共通化先です。 |
 
 ### 楽曲型 (`music`) と lyria ワークフロー
 
@@ -71,6 +48,32 @@ clone := r.Clone() // スライスやポインタも複製する深いコピー
 型だけを別パッケージへ切り出しているのは、レシピを読み書きするだけの下流サービスが、レート制限や singleflight を伴うワークフロー本体まで輸入せずに済むようにするためです。`lyria.MusicRecipe` / `MusicSection` / `LyricsDraft` / `AIModels` は `music` の型の別名なので、既存の表記もそのまま使えます。
 
 ワークフロー（`lyria.Workflow`）は `GenerateLyrics` → `Compose` → `GenerateAudio` の 3 段を個別のメソッドとして公開します。段の間に構造検証などの品質ゲートを挟めるようにするためで、**一括実行の入口は意図的にありません**（品質ゲートは製品ごとに違うため、束ねても呼び出し側で分解し直すことになります）。
+
+### 呼び出しガード (`callguard`)
+
+高価な AI 呼び出しに、**発射間隔**（クォータ保護）・**1 回あたりの上限時間**・**同一内容の同時実行の重複排除**をまとめて掛けます。`lyria` が内部で使っているほか、`go-comic-kit` / `go-veo-orchestrator` のようにこのクライアントの上でワークフローを組むキットが、同じ機構を書き写さずに済むよう公開しています。
+
+```go
+guard := callguard.New(
+    callguard.WithRateInterval(6*time.Second), // 毎分 10 回まで
+    callguard.WithExecTimeout(5*time.Minute),
+)
+
+var group callguard.Group // ゼロ値で使えます
+
+key := callguard.Key("image", model, prompt, callguard.SeedKey(seed))
+resp, err := callguard.Do(ctx, &group, guard, key, func(execCtx context.Context) (*Response, error) {
+    return inner.Generate(execCtx, req)
+})
+```
+
+設計上の要点は 3 つです。
+
+- **クォータはプロジェクト単位で、操作の種類ごとではありません。** テキスト生成と画像生成で別々に絞っても意味がないため、ワークフロー全体で `Guard` を 1 つ共有し、重複排除の単位（`Group`）だけを呼び出しの種類ごとに分けます。
+- **発射間隔の待機は上限時間の外側です。** 待たされた時間を 1 回あたりの上限時間に数えると、混雑しているだけでタイムアウトします。
+- **上限時間に「無制限」はありません。** 共有実行は呼び出し元の context から切り離されるため（リーダーの離脱が相乗り側を巻き添えにしないため）、これが唯一の打ち切り手段です。無制限にすると、応答の返らない 1 回が同じキーの後続を永久に待たせます。
+
+戻り値は相乗りした全員で共有されます。呼び出し側が書き換える可能性があるものは複製してから返してください。
 
 ---
 
@@ -333,7 +336,17 @@ opts := gemini.GenerateOptions{
 
 ### 構造化出力の後処理
 
-`ResponseSchema` + `ResponseMIMEType: "application/json"` による構造化出力（constrained decoding）を使っても、モデルが完結した JSON の後に余分な閉じ括弧や説明テキストを継ぎ足すことが実際にあります。`json.Unmarshal` の前段で `gemini.CleanJSONResponse(raw)` を通すと、こうした末尾ノイズを除去・補正できます。トップレベルが配列（`[...]`）のスキーマにも対応しています。
+`ResponseSchema` + `ResponseMIMEType: "application/json"` による構造化出力（constrained decoding）を使っても、モデルは次の形で JSON を崩すことがあります。**どれも応答を返しきったあとの話なので、API の再試行では直りません。** `json.Unmarshal` の前段で `gemini.CleanJSONResponse(raw)` を通してください。
+
+- Markdown のフェンス（```` ```json … ``` ````）で包む
+- 完結した JSON の後ろに説明文や余分な閉じ括弧を継ぎ足す
+- `}` の代わりに `)` などで閉じる
+- 文字列の中でバックスラッシュをエスケープし忘れる（正規表現やパスを引用したとき）
+- 文字列の中に改行やタブを生のまま入れる（複数行の本文を引用したとき）
+
+後ろの 2 つは、**台本の抜粋・歌詞・台詞のように複数行の本文を JSON に載せる用途で特に起きます。** トップレベルが配列（`[...]`）のスキーマにも対応しています。
+
+**既に解釈できる入力は 1 バイトも変えません。** 補修しても妥当な JSON にならなければ入力をそのまま返すので、呼び出し側のエラーメッセージは元の壊れ方を指したままになります。
 
 ```go
 resp, err := client.GenerateWithAttachments(ctx, model, prompt, nil, opts)
@@ -539,7 +552,10 @@ req.ModifyRequestBody = func(body map[string]any) map[string]any {
 ## 🤝 依存関係 (Dependencies)
 
 - [google.golang.org/genai](https://pkg.go.dev/google.golang.org/genai) - Google Gemini 公式 SDK
-- [shouni/netarmor](https://github.com/shouni/netarmor) - ネットワークセキュリティ & リトライ戦略
+- [shouni/netarmor](https://github.com/shouni/netarmor) - リトライ戦略（`retry`）とネットワークセキュリティ
+- [golang.org/x/oauth2](https://pkg.go.dev/golang.org/x/oauth2) - `Config.HTTPClient` へ認証情報を付け直すために使用
+- [golang.org/x/sync](https://pkg.go.dev/golang.org/x/sync) - `callguard` の singleflight
+- [golang.org/x/time](https://pkg.go.dev/golang.org/x/time) - `callguard` のレート制限
 
 ---
 
