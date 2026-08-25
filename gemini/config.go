@@ -36,8 +36,8 @@ type Config struct {
 	// 値型のままでは未設定と区別できず「リトライしない」を表現する方法がありませんでした
 	// （未設定を優先して既定値へ倒していたため、0 を書いても既定回数だけリトライしていました）。
 	//
-	//	cfg.MaxRetries = Ptr[uint64](0) // リトライしない
-	//	cfg.MaxRetries = Ptr[uint64](3) // 3 回までリトライする
+	//	cfg.MaxRetries = new(uint64(0)) // リトライしない
+	//	cfg.MaxRetries = new(uint64(3)) // 3 回までリトライする
 	MaxRetries *uint64
 
 	InitialDelay        time.Duration

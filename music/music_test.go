@@ -21,13 +21,11 @@ func TestRecipeJSONWireFormat(t *testing.T) {
 		Sections: []Section{
 			{Name: "Verse", Duration: 30, StartSeconds: 0, EndSeconds: 30, Prompt: "pulse"},
 		},
-		Lyrics: &LyricsDraft{Title: "Song", Theme: "theme", Hook: "hook", Lyrics: "words"},
-		AIModels: AIModels{
-			TextModel:  "gemini-test",
-			AudioModel: "lyria-test",
-			Seed:       &seed,
-			Lang:       LangJapanese,
-		},
+		Lyrics:     &LyricsDraft{Title: "Song", Theme: "theme", Hook: "hook", Lyrics: "words"},
+		TextModel:  "gemini-test",
+		AudioModel: "lyria-test",
+		Seed:       &seed,
+		Lang:       LangJapanese,
 	}
 
 	data, err := json.Marshal(r)
@@ -73,7 +71,7 @@ func TestRecipeCloneIsDeep(t *testing.T) {
 		Instruments: []string{"synth"},
 		Sections:    []Section{{Name: "Verse"}},
 		Lyrics:      &LyricsDraft{Keywords: []string{"one"}},
-		AIModels:    AIModels{Seed: &seed},
+		Seed:        &seed,
 	}
 
 	cloned := src.Clone()
@@ -97,7 +95,7 @@ func TestIsJapanese(t *testing.T) {
 		{LangJapanese, true},
 		{LangEnglish, false},
 	} {
-		r := &Recipe{AIModels: AIModels{Lang: tt.lang}}
+		r := &Recipe{Lang: tt.lang}
 		if got := r.IsJapanese(); got != tt.want {
 			t.Errorf("IsJapanese(lang=%q) = %v, want %v", tt.lang, got, tt.want)
 		}

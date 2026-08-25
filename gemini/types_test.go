@@ -17,7 +17,7 @@ func TestSeedToPtrInt32(t *testing.T) {
 		want  *int32
 	}{
 		{"nilならnil", nil, nil},
-		{"正常な範囲", &validSeed, int32Ptr(12345)},
+		{"正常な範囲", &validSeed, new(int32(12345))},
 		{"int32範囲外ならnil", &overSeed, nil},
 	}
 
@@ -45,5 +45,3 @@ func TestSeedToPtrInt32(t *testing.T) {
 		})
 	}
 }
-
-func int32Ptr(i int32) *int32 { return &i }

@@ -290,7 +290,7 @@ func TestGenerateParts_AudioOnlyResponse(t *testing.T) {
 	}
 	c := &Client{
 		modelClient: fake,
-		retryOpts:   Config{MaxRetries: Ptr[uint64](1)}.buildRetryOptions(),
+		retryOpts:   Config{MaxRetries: new(uint64(1))}.buildRetryOptions(),
 	}
 
 	resp, err := c.generateParts(ctx, "gemini-test", []*genai.Part{{Text: "voice please"}}, GenerateOptions{
@@ -328,7 +328,7 @@ func TestGenerateParts_ExtractsImagesAndAudios(t *testing.T) {
 	c := &Client{
 		modelClient: fake,
 		retryOpts: Config{
-			MaxRetries:   Ptr[uint64](1),
+			MaxRetries:   new(uint64(1)),
 			InitialDelay: time.Nanosecond,
 			MaxDelay:     time.Nanosecond,
 		}.buildRetryOptions(),
@@ -354,7 +354,7 @@ func TestGenerateParts_RetriesOnRateLimit(t *testing.T) {
 	c := &Client{
 		modelClient: fake,
 		retryOpts: Config{
-			MaxRetries:   Ptr[uint64](2),
+			MaxRetries:   new(uint64(2)),
 			InitialDelay: time.Nanosecond,
 			MaxDelay:     time.Nanosecond,
 		}.buildRetryOptions(),
@@ -380,7 +380,7 @@ func TestGenerateParts_DoesNotRetryOnBadRequest(t *testing.T) {
 	c := &Client{
 		modelClient: fake,
 		retryOpts: Config{
-			MaxRetries:   Ptr[uint64](2),
+			MaxRetries:   new(uint64(2)),
 			InitialDelay: time.Nanosecond,
 			MaxDelay:     time.Nanosecond,
 		}.buildRetryOptions(),
@@ -414,7 +414,7 @@ func TestGenerateParts_PopulatesUsage(t *testing.T) {
 	}
 	c := &Client{
 		modelClient: fake,
-		retryOpts:   Config{MaxRetries: Ptr[uint64](1)}.buildRetryOptions(),
+		retryOpts:   Config{MaxRetries: new(uint64(1))}.buildRetryOptions(),
 	}
 
 	resp, err := c.generateParts(ctx, "gemini-test", []*genai.Part{{Text: "hello"}}, GenerateOptions{})
@@ -434,7 +434,7 @@ func TestGenerateParts_RequestTimeoutBoundsCall(t *testing.T) {
 	fake := &slowModelClient{delay: 50 * time.Millisecond}
 	c := &Client{
 		modelClient:    fake,
-		retryOpts:      Config{MaxRetries: Ptr[uint64](1)}.buildRetryOptions(),
+		retryOpts:      Config{MaxRetries: new(uint64(1))}.buildRetryOptions(),
 		requestTimeout: time.Millisecond,
 	}
 

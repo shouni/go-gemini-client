@@ -129,9 +129,9 @@ func TestExtractThoughts(t *testing.T) {
 func TestBuildGenerateConfig_SamplingParams(t *testing.T) {
 	t.Run("サンプリングパラメータが SDK に渡ること", func(t *testing.T) {
 		cfg, err := buildGenerateConfig(GenerateOptions{
-			Temperature:     Ptr[float32](0),
-			TopP:            Ptr[float32](0.9),
-			TopK:            Ptr[float32](40),
+			Temperature:     new(float32(0)),
+			TopP:            new(float32(0.9)),
+			TopK:            new(float32(40)),
 			MaxOutputTokens: 2048,
 			StopSequences:   []string{"END"},
 		}, false)
@@ -161,7 +161,7 @@ func TestBuildGenerateConfig_SamplingParams(t *testing.T) {
 	// 思考設定そのものの網羅は TestBuildThinkingConfig にあります。ここは
 	// buildGenerateConfig がその結果を素通しするかだけを見ます。
 	t.Run("ThinkingBudget 0 で思考を無効化できること", func(t *testing.T) {
-		cfg, err := buildGenerateConfig(GenerateOptions{ThinkingBudget: Ptr[int32](0)}, false)
+		cfg, err := buildGenerateConfig(GenerateOptions{ThinkingBudget: new(int32(0))}, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -234,8 +234,8 @@ func TestBuildThinkingConfig(t *testing.T) {
 		},
 		{
 			name:      "ThinkingBudget のみ",
-			opts:      GenerateOptions{ThinkingBudget: Ptr[int32](0)},
-			wantBudge: Ptr[int32](0),
+			opts:      GenerateOptions{ThinkingBudget: new(int32(0))},
+			wantBudge: new(int32(0)),
 		},
 		{
 			name:      "ThinkingLevel のみ",
@@ -244,13 +244,13 @@ func TestBuildThinkingConfig(t *testing.T) {
 		},
 		{
 			name:      "両方指定なら ThinkingLevel を優先し Budget は送らない",
-			opts:      GenerateOptions{ThinkingLevel: genai.ThinkingLevelHigh, ThinkingBudget: Ptr[int32](4096)},
+			opts:      GenerateOptions{ThinkingLevel: genai.ThinkingLevelHigh, ThinkingBudget: new(int32(4096))},
 			wantLevel: genai.ThinkingLevelHigh,
 		},
 		{
 			name:      "Unspecified は未指定扱い",
-			opts:      GenerateOptions{ThinkingLevel: genai.ThinkingLevelUnspecified, ThinkingBudget: Ptr[int32](128)},
-			wantBudge: Ptr[int32](128),
+			opts:      GenerateOptions{ThinkingLevel: genai.ThinkingLevelUnspecified, ThinkingBudget: new(int32(128))},
+			wantBudge: new(int32(128)),
 		},
 		{
 			name: "IncludeThoughts だけでも設定を送る",
