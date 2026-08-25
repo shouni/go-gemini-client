@@ -81,12 +81,21 @@ type GenerateOptions struct {
 
 	// --- 画像生成 (Nano Banana / Imagen) 特有のパラメータ ---
 
-	AspectRatio      string
-	ImageSize        string
-	Seed             *int64
+	// AspectRatio は生成画像の縦横比です（例: "16:9"）。空で API デフォルト。
+	AspectRatio string
+	// ImageSize は生成画像の解像度指定です（例: "1K"）。空で API デフォルト。
+	ImageSize string
+	// Seed は再現性のためのシード値です。int32 の範囲外を指定すると
+	// ErrInvalidSeed になります。nil で API に委ねます。
+	Seed *int64
+	// PersonGeneration は人物生成の許可設定です。Vertex AI でのみ送信され、
+	// Gemini API バックエンドでは無視されます。
 	PersonGeneration PersonGeneration
 
-	SafetySettings   []*genai.SafetySetting
+	// SafetySettings は安全フィルタの設定です。NewSafetySettings で組み立てられます。
+	SafetySettings []*genai.SafetySetting
+	// ResponseMIMEType は期待するレスポンスの MIME type です
+	// （"application/json" / "image/png" / "audio/wav" など）。
 	ResponseMIMEType string
 	// ResponseSchema は構造化出力のスキーマです。ResponseMIMEType "application/json" と
 	// 併用すると、モデル出力が文法レベルでスキーマに制約され、JSON 以外の

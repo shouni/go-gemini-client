@@ -8,42 +8,18 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/shouni/go-gemini-client.svg)](https://pkg.go.dev/github.com/shouni/go-gemini-client)
 [![Status](https://img.shields.io/badge/Status-Active-brightgreen)](#)
 
-## 🎯 概要: Net Armor 統合型ハイブリッド Gemini クライアント
+## 🎯 概要
 
-**Go Gemini Client** は、[shouni/netarmor](https://github.com/shouni/netarmor) をリトライ基盤に採用した、**Google Gemini API / Vertex AI** 向けの Go ライブラリです。
-
-ひとつのクライアントで、API Key 方式の **Gemini API (Google AI Studio)** と、Google Cloud 認証を使う **Vertex AI** を切り替えて利用できます。テキスト生成だけでなく、GCS URI や File API を使ったマルチモーダル入力、画像・音声レスポンス、Lyria による音楽生成、Veo による動画生成も扱えます。
-
-**設計の中心は「`google.golang.org/genai` を公開 API に出さないこと」です。** 生成・構造化出力・安全設定・思考量・動画生成のいずれも、SDK を import せずに書けます。利用側のモックも 1 メソッドで済みます。
+**Go Gemini Client** は、**Google Gemini API / Vertex AI** 向けの Go ライブラリです。テキスト生成に加えて、GCS URI や File API を使ったマルチモーダル入力、画像・音声レスポンス、Lyria による音楽生成、Veo による動画生成を扱えます。
 
 ---
 
-## 💎 特徴と設計思想
+## 💎 設計の要点
 
-### 🤖 ハイブリッド・バックエンド・サポート
-
-- **Dual Backend**: `APIKey` 方式と `ProjectID` / `LocationID` 方式の両方に対応。
-- **Vertex AI 連携**: Cloud Run などの環境ではサービスアカウントや Application Default Credentials を利用できます。
-- **GCS 直接参照**: Vertex AI では `gs://` URI を `gemini.Attachment{URI: ...}` として直接プロンプトに含められます。
-
-### 🛡️ 堅牢な AI クライアント (`gemini`)
-
-- **高度なリトライ戦略**: `netarmor` の retry を利用し、一時的なネットワーク障害や API 側の一過性エラーを指数バックオフで再試行します。
-- **リトライ不要エラーの判定**: セーフティフィルタによるブロックや空レスポンスなど、再試行しても解決しにくい API レスポンスエラーを識別します。
-- **決定論的な制御**: `Seed` により、生成結果の再現性を必要とするワークフローをサポートします。
-- **型安全なエラー判定**: 設定不備や入力不備はセンチネルエラーとして公開しており、`errors.Is` で判定できます。
-
-### 📁 高度なリソース管理
-
-- **File API サポート**: ファイルアップロード後、利用可能な `Active` 状態になるまで自動でポーリングします。
-- **自動クリーンアップ**: Active 化に失敗した File API オブジェクトはバックグラウンドで削除を試みます。
-- **レスポンス抽出**: テキスト、生成画像、生成音声、MIME type 付きの添付 (`Attachments`)、トークン使用量 (`Usage`) を `gemini.Response` にまとめて返します。
-
-### 🎬 動画生成 (`veo`) と音楽生成 (`lyria`)
-
-- **長時間実行オペレーションの完走**: `veo` が投函から完了までのポーリング、タイムアウト、一時的な失敗の許容を引き受けます。投函と完了待ちを別の実行に分けることもできます。
-- **入力の事前検証**: Veo が併用できない入力（video と image など）を送信前に弾きます。
-- **音楽生成の 3 段**: `lyria` が歌詞生成 → 作曲レシピ → Lyria 音声生成を、段ごとに分けて公開します。
+- **genai SDK を公開 API に出しません。** 生成・構造化出力・安全設定・思考量・動画生成のいずれも SDK を import せずに書けます。利用側のモックも 1 メソッドで済みます。
+- **ひとつのクライアントで 2 つのバックエンド。** `APIKey`（Gemini API）と `ProjectID` / `LocationID`（Vertex AI）を排他で受け取り、`gs://` の扱いなどバックエンド差は内部で吸収します。
+- **失敗の種類を型で区別します。** 設定不備・入力不備・安全フィルタによるブロックはすべてセンチネルエラーで、`errors.Is` で分類できます。リトライしても直らない失敗は再試行しません。
+- **長時間実行と重複呼び出しを引き受けます。** `veo` が動画生成のポーリングと一時的失敗の許容を、`callguard` が発射間隔・上限時間・同一内容の重複排除を持ちます。
 
 ---
 
@@ -576,7 +552,10 @@ req.ModifyRequestBody = func(body map[string]any) map[string]any {
 ## 🤝 依存関係 (Dependencies)
 
 - [google.golang.org/genai](https://pkg.go.dev/google.golang.org/genai) - Google Gemini 公式 SDK
-- [shouni/netarmor](https://github.com/shouni/netarmor) - ネットワークセキュリティ & リトライ戦略
+- [shouni/netarmor](https://github.com/shouni/netarmor) - リトライ戦略（`retry`）とネットワークセキュリティ
+- [golang.org/x/oauth2](https://pkg.go.dev/golang.org/x/oauth2) - `Config.HTTPClient` へ認証情報を付け直すために使用
+- [golang.org/x/sync](https://pkg.go.dev/golang.org/x/sync) - `callguard` の singleflight
+- [golang.org/x/time](https://pkg.go.dev/golang.org/x/time) - `callguard` のレート制限
 
 ---
 

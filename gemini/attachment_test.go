@@ -124,8 +124,8 @@ func TestGenerateWithAttachmentsSendsPromptAndInlineData(t *testing.T) {
 	}
 }
 
-// TestGenerateWithAttachmentsAppliesGenerateOptions verifies the options path is shared with
-// GenerateWithParts, so structured output works the same through either entry point.
+// TestGenerateWithAttachmentsAppliesGenerateOptions verifies GenerateOptions reaches the SDK
+// through the public entry point, so structured output works without touching genai.
 func TestGenerateWithAttachmentsAppliesGenerateOptions(t *testing.T) {
 	fake := &fakeModelClient{}
 	client := &Client{modelClient: fake, retryOpts: Config{MaxRetries: Ptr[uint64](1)}.buildRetryOptions()}

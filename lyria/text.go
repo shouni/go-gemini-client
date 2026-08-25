@@ -17,8 +17,7 @@ type lyriaTextGenerator struct {
 	aiClient     gemini.Generator
 	promptGen    TextPromptGenerator
 	defaultModel string
-	// guard は発射間隔と 1 回あたりの上限時間です。
-	// nil は「制限なし・既定の上限時間」（テストが構造体リテラルで直接構築するため）。
+	// guard は nil で「制限なし・既定の上限時間」を意味します。
 	guard *callguard.Guard
 	group callguard.Group
 }
