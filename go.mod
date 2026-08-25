@@ -1,6 +1,6 @@
 module github.com/shouni/go-gemini-client
 
-go 1.26
+go 1.27
 
 require (
 	github.com/shouni/netarmor v1.2.4
