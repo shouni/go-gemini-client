@@ -1,3 +1,4 @@
+# CI の実体は shouni/workflows。ジョブ構成とタグ運用の理由はそちらの README にある。
 name: CI
 
 on:
@@ -14,92 +15,10 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: Build & Test
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Build
-        run: go build ./...
-
-      - name: Vet
-        run: go vet ./...
-
-      - name: Gofmt check
-        run: test -z "$(gofmt -l .)"
-
-      # -shuffle=on はテスト間の暗黙の実行順序依存を検出します。
-      - name: Test (with race detector)
-        run: go test -shuffle=on -race -coverprofile=coverage.out -covermode=atomic ./...
-
-      - name: Coverage summary
-        run: |
-          go tool cover -func=coverage.out | tee coverage.txt
-          {
-            echo "### Coverage"
-            echo '```'
-            tail -n 1 coverage.txt
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  fuzz:
-    name: Fuzz (smoke)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      # CleanJSONResponse は構造化出力の全経路が通るため、短時間のファジングを毎回回す。
-      # 失敗した場合は再現用シードを gemini/testdata/fuzz/ にコミットして回帰テスト化する。
-      - name: Fuzz CleanJSONResponse
-        run: go test ./gemini -run '^$' -fuzz FuzzCleanJSONResponse -fuzztime 60s
-
-      - name: Upload fuzz failures
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: fuzz-corpus
-          path: gemini/testdata/fuzz/
-          retention-days: 7
-          if-no-files-found: ignore
-
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.13.1
-
-  vulncheck:
-    name: govulncheck
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: golang/govulncheck-action@v1
-        with:
-          go-version-file: go.mod
-          repo-checkout: false
+  ci:
+    uses: shouni/workflows/.github/workflows/go-ci.yml@v1
+    with:
+      coverage: true
+      # CleanJSONResponse は構造化出力の全経路が通るため、探索を毎回回す。
+      fuzz-targets: "./gemini#FuzzCleanJSONResponse"
+      fuzz-time: 60s
