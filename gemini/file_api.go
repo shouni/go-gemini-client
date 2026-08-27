@@ -50,9 +50,7 @@ func (c *Client) UploadFile(ctx context.Context, r io.Reader, mimeType, displayN
 		DisplayName: displayName,
 	}
 
-	file, err := runWithRetry(ctx, c.retryOpts, "File API Upload", func() (*genai.File, error) {
-		return c.fileClient.Upload(ctx, bytes.NewReader(data), uploadCfg)
-	})
+	file, err := c.fileClient.Upload(ctx, bytes.NewReader(data), uploadCfg)
 	if err != nil {
 		return UploadedFile{}, fmt.Errorf("gemini File API へのアップロードに失敗しました: %w", err)
 	}
@@ -76,13 +74,10 @@ func (c *Client) DeleteFile(ctx context.Context, name string) error {
 	if name == "" {
 		return nil
 	}
-	_, err := runWithRetry(ctx, c.retryOpts, "File API Delete", func() (*genai.DeleteFileResponse, error) {
-		resp, err := c.fileClient.Delete(ctx, name, nil)
-		if err != nil && isNotFoundAPIError(err) {
-			return nil, nil
-		}
-		return resp, err
-	})
+	_, err := c.fileClient.Delete(ctx, name, nil)
+	if err != nil && isNotFoundAPIError(err) {
+		err = nil
+	}
 	if err != nil {
 		return fmt.Errorf("ファイル %q の削除に失敗しました: %w", name, err)
 	}
@@ -154,7 +149,7 @@ func (c *Client) waitForFileActive(ctx context.Context, fileName string) (string
 }
 
 func (c *Client) checkFileState(ctx context.Context, fileName string) (uri string, done bool, err error) {
-	f, err := c.fileClient.Get(ctx, fileName, &genai.GetFileConfig{})
+	f, err := c.fileClient.Get(ctx, fileName, &genai.GetFileConfig{HTTPOptions: noRetryHTTPOptions()})
 	if err != nil {
 		return "", false, fmt.Errorf("ファイル %q のステータス確認に失敗しました: %w", fileName, err)
 	}

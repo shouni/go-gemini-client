@@ -10,7 +10,7 @@ import (
 
 const (
 	// DefaultMaxRetries は、リトライ回数が未設定の場合に使用されるデフォルト値です。
-	DefaultMaxRetries uint64 = 1
+	DefaultMaxRetries uint = 1
 	// DefaultInitialDelay は、初期リトライ間隔が未設定の場合に使用されるデフォルト値です。
 	DefaultInitialDelay time.Duration = 30 * time.Second
 	// DefaultMaxDelay は、最大リトライ間隔が未設定の場合に使用されるデフォルト値です。

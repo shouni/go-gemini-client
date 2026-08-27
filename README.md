@@ -259,7 +259,8 @@ File API の呼び出しにも `Config` のリトライ設定が効きます。
 | `APIKey` | Gemini API キー。Google AI Studio / Gemini API で利用します。 | - |
 | `ProjectID` | Google Cloud プロジェクト ID。Vertex AI で利用します。 | - |
 | `LocationID` | Vertex AI のリージョン。例: `asia-northeast1`, `us-central1` | - |
-| `MaxRetries` | 最大リトライ回数（`*uint64`）。`nil` は既定値、`new(uint64(0))` は再試行しない | `1` |
+| `MaxRetries` | 最大リトライ回数（初回実行を含みません）。`0` は未設定として既定値を使います | `1` |
+| `DisableRetry` | リトライを無効にし、1 回だけ実行します | `false` |
 | `InitialDelay` | リトライ開始時の待機時間 | `30s` |
 | `MaxDelay` | リトライ待機時間の上限 | `120s` |
 | `FilePollingInterval` | File API の状態確認間隔 | `2s` |
@@ -268,7 +269,6 @@ File API の呼び出しにも `Config` のリトライ設定が効きます。
 | `AsyncCleanupTimeout` | アップロード後処理失敗時のバックグラウンド削除の上限時間 | `15s` |
 | `Logger` | ライブラリ内部ログの出力先（`*slog.Logger`） | `slog.Default()` |
 | `HTTPClient` | genai SDK が使う HTTP クライアント。タイムアウトやプロキシ、SSRF 対策済みクライアント（`securenet.NewSafeHTTPClient` 等）の注入に使います | SDK 既定 |
-| `OnRetry` | リトライ直前に呼ばれる通知関数 | なし |
 
 `APIKey` と `ProjectID` / `LocationID` は排他的です。Vertex AI を使う場合は `ProjectID` と `LocationID` の両方を指定してください。
 
@@ -552,7 +552,6 @@ req.ModifyRequestBody = func(body map[string]any) map[string]any {
 ## 🤝 依存関係 (Dependencies)
 
 - [google.golang.org/genai](https://pkg.go.dev/google.golang.org/genai) - Google Gemini 公式 SDK
-- [shouni/netarmor](https://github.com/shouni/netarmor) - リトライ戦略（`retry`）とネットワークセキュリティ
 - [golang.org/x/oauth2](https://pkg.go.dev/golang.org/x/oauth2) - `Config.HTTPClient` へ認証情報を付け直すために使用
 - [golang.org/x/sync](https://pkg.go.dev/golang.org/x/sync) - `callguard` の singleflight
 - [golang.org/x/time](https://pkg.go.dev/golang.org/x/time) - `callguard` のレート制限

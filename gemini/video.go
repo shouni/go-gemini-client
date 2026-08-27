@@ -132,9 +132,7 @@ func (c *Client) StartVideo(ctx context.Context, modelName string, req VideoRequ
 		return nil, err
 	}
 
-	op, err := runWithRetry(ctx, c.retryOpts, "GenerateVideos", func() (*genai.GenerateVideosOperation, error) {
-		return c.videoClient.GenerateVideosFromSource(ctx, modelName, source, config)
-	})
+	op, err := c.videoClient.GenerateVideosFromSource(ctx, modelName, source, config)
 	if err != nil {
 		return nil, fmt.Errorf("動画生成オペレーションの開始に失敗しました: %w", err)
 	}
@@ -152,7 +150,8 @@ func (c *Client) PollVideo(ctx context.Context, operationName string) (*VideoOpe
 	if strings.TrimSpace(operationName) == "" {
 		return nil, ErrEmptyOperationName
 	}
-	op, err := c.videoClient.GetVideosOperation(ctx, &genai.GenerateVideosOperation{Name: operationName}, nil)
+	op, err := c.videoClient.GetVideosOperation(ctx, &genai.GenerateVideosOperation{Name: operationName},
+		&genai.GetOperationConfig{HTTPOptions: noRetryHTTPOptions()})
 	if err != nil {
 		return nil, fmt.Errorf("動画生成オペレーション %q の取得に失敗しました: %w", operationName, err)
 	}

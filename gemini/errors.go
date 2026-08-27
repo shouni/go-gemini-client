@@ -39,7 +39,7 @@ var (
 var ErrVideoGenerationFailed = errors.New("gemini: video generation failed")
 
 // API との通信は成功したが、レスポンス内容が利用できない場合のセンチネルエラー。
-// いずれもリトライでは解決しないため shouldRetry は false を返します。
+// いずれも HTTP としては 200 なので、SDK 内蔵のリトライの対象にもなりません。
 var (
 	// ErrBlocked は、安全フィルタ等により生成がブロックされたことを示します。
 	// プロンプトを変えない限り再試行しても同じ結果になります。

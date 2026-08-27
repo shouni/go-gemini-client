@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shouni/netarmor/retry"
 	"google.golang.org/genai"
 )
 
@@ -35,7 +34,6 @@ type Client struct {
 	fileClient          fileClient
 	videoClient         videoClient
 	backend             genai.Backend
-	retryOpts           []retry.Option
 	logger              *slog.Logger
 	requestTimeout      time.Duration
 	filePollingInterval time.Duration
@@ -63,7 +61,6 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 		fileClient:          genAIFileClient{files: client.Files},
 		videoClient:         genAIVideoClient{models: client.Models, operations: client.Operations},
 		backend:             clientCfg.Backend,
-		retryOpts:           cfg.buildRetryOptions(),
 		logger:              cfg.getLogger(),
 		requestTimeout:      cfg.RequestTimeout,
 		filePollingInterval: cfg.getFilePollingInterval(),
@@ -235,21 +232,19 @@ func buildGenerateConfig(opts GenerateOptions, vertexAI bool) (*genai.GenerateCo
 	return genConfig, nil
 }
 
-// generate は共通の API 呼び出しとリトライロジックをカプセル化します。
-// Config.RequestTimeout が設定されている場合、リトライを含む呼び出し全体に適用されます。
+// generate は共通の API 呼び出しをカプセル化します。
+// リトライは genai SDK が内蔵のものを行います（設定は Config.retryOptions）。
+// Config.RequestTimeout が設定されている場合、リトライを含む呼び出し全体に適用されます
+// （SDK のリトライループは ctx.Err() を見るため、締切の外へは出ません）。
 func (c *Client) generate(ctx context.Context, modelName string, contents []*genai.Content, config *genai.GenerateContentConfig) (*Response, error) {
 	ctx, cancel := c.requestContext(ctx)
 	defer cancel()
 
-	return runWithRetry(ctx, c.retryOpts,
-		fmt.Sprintf("Gemini API 呼び出し（モデル: %s）", modelName),
-		func() (*Response, error) {
-			resp, err := c.modelClient.GenerateContent(ctx, modelName, contents, config)
-			if err != nil {
-				return nil, err
-			}
-			return responseFromGenAI(resp)
-		})
+	resp, err := c.modelClient.GenerateContent(ctx, modelName, contents, config)
+	if err != nil {
+		return nil, fmt.Errorf("モデル %s の Gemini API 呼び出しに失敗しました: %w", modelName, err)
+	}
+	return responseFromGenAI(resp)
 }
 
 // responseFromGenAI は genai のレスポンスをパッケージ公開型の Response に変換します。

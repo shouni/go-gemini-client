@@ -95,57 +95,76 @@ func TestConfig_ToClientConfig(t *testing.T) {
 	})
 }
 
-func TestConfig_retryParams(t *testing.T) {
+func TestConfig_retryOptions(t *testing.T) {
 	t.Run("デフォルト値が適用されること", func(t *testing.T) {
-		cfg := Config{}
-		got := cfg.retryParams()
-		if got.MaxRetries != clampToUint(DefaultMaxRetries) {
-			t.Errorf("MaxRetries = %v, want %v", got.MaxRetries, DefaultMaxRetries)
+		got := Config{}.retryOptions()
+		if got == nil {
+			t.Fatal("retryOptions() = nil, want 既定値つきの設定")
 		}
-		if got.InitialInterval != DefaultInitialDelay || got.MaxInterval != DefaultMaxDelay {
-			t.Errorf("インターバルのデフォルトが適用されていません: %+v", got)
+		if *got.Attempts != int32(DefaultMaxRetries)+1 {
+			t.Errorf("Attempts = %v, want %v", *got.Attempts, DefaultMaxRetries+1)
+		}
+		if *got.InitialDelay != DefaultInitialDelay.Seconds() || *got.MaxDelay != DefaultMaxDelay.Seconds() {
+			t.Errorf("待ち時間のデフォルトが適用されていません: %+v", got)
 		}
 	})
 
 	t.Run("設定値で上書きされること", func(t *testing.T) {
-		cfg := Config{
-			MaxRetries:   new(uint64(5)),
+		got := Config{
+			MaxRetries:   5,
 			InitialDelay: 10 * time.Second,
 			MaxDelay:     60 * time.Second,
+		}.retryOptions()
+		if *got.Attempts != 6 {
+			t.Errorf("Attempts = %v, want 6 (初回 + リトライ5回)", *got.Attempts)
 		}
-		got := cfg.retryParams()
-		if got.MaxRetries != 5 || got.InitialInterval != 10*time.Second || got.MaxInterval != 60*time.Second {
-			t.Errorf("設定が正しく適用されていません: %+v", got)
-		}
-	})
-
-	// 0 は「再試行しない」で、未設定の既定値へは倒しません。
-	// MaxRetries が値型だったころは構造体のゼロ値と区別できず、これを書く手段が
-	// そもそもありませんでした（0 と書いても DefaultMaxRetries が使われていた）。
-	t.Run("明示した 0 は再試行しないこと", func(t *testing.T) {
-		cfg := Config{MaxRetries: new(uint64(0))}
-		got := cfg.retryParams()
-		if got.MaxRetries != 0 {
-			t.Errorf("MaxRetries = %v, want 0", got.MaxRetries)
+		if *got.InitialDelay != 10 || *got.MaxDelay != 60 {
+			t.Errorf("待ち時間が正しく適用されていません: %+v", got)
 		}
 	})
 
-	// nil のときだけ既定値へ倒すこと。ゼロ値の Config が既定回数で再試行する
-	// 従来の挙動は変えていません。
-	t.Run("nil は既定値へ倒すこと", func(t *testing.T) {
-		cfg := Config{MaxRetries: nil}
-		got := cfg.retryParams()
-		if got.MaxRetries != clampToUint(DefaultMaxRetries) {
-			t.Errorf("MaxRetries = %v, want %v", got.MaxRetries, DefaultMaxRetries)
+	// SDK の既定ジッタ（U(0, 1秒) の加算）は InitialDelay が数十秒だとほぼ効かないため、
+	// 初期間隔に比例した幅を明示します。
+	t.Run("ジッタが初期間隔に比例すること", func(t *testing.T) {
+		got := Config{InitialDelay: 60 * time.Second}.retryOptions()
+		if *got.Jitter != 30 {
+			t.Errorf("Jitter = %v, want 30", *got.Jitter)
 		}
 	})
 
-	t.Run("Option 列に変換できること", func(t *testing.T) {
-		opts := Config{MaxRetries: new(uint64(5))}.buildRetryOptions()
-		if len(opts) != 3 {
-			t.Errorf("Option の数が不正です: %d", len(opts))
+	// nil は SDK 側で「1 回だけ実行」を意味します。値型の MaxRetries では
+	// ゼロ値と「リトライしない」を区別できないため、専用のフラグで表します。
+	t.Run("DisableRetry で nil になること", func(t *testing.T) {
+		if got := (Config{DisableRetry: true}).retryOptions(); got != nil {
+			t.Errorf("retryOptions() = %+v, want nil", got)
 		}
 	})
+
+	t.Run("MaxRetries の 0 は未設定として既定値へ倒すこと", func(t *testing.T) {
+		got := Config{MaxRetries: 0}.retryOptions()
+		if *got.Attempts != int32(DefaultMaxRetries)+1 {
+			t.Errorf("Attempts = %v, want %v", *got.Attempts, DefaultMaxRetries+1)
+		}
+	})
+
+	t.Run("クライアント設定に載ること", func(t *testing.T) {
+		cc, err := Config{APIKey: "key", MaxRetries: 2}.toClientConfig()
+		if err != nil {
+			t.Fatalf("toClientConfig() error = %v", err)
+		}
+		if cc.HTTPOptions.RetryOptions == nil || *cc.HTTPOptions.RetryOptions.Attempts != 3 {
+			t.Errorf("HTTPOptions.RetryOptions = %+v, want Attempts=3", cc.HTTPOptions.RetryOptions)
+		}
+	})
+}
+
+func TestNoRetryHTTPOptions(t *testing.T) {
+	// リクエスト側の RetryOptions は非 nil のときだけクライアント設定を上書きするため、
+	// 打ち消しには nil ではなく Attempts=1 を渡す必要があります。
+	got := noRetryHTTPOptions()
+	if got.RetryOptions == nil || *got.RetryOptions.Attempts != 1 {
+		t.Errorf("noRetryHTTPOptions() = %+v, want Attempts=1", got.RetryOptions)
+	}
 }
 
 func TestConfig_FilePolling(t *testing.T) {
