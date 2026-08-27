@@ -3,7 +3,6 @@ package gemini
 import (
 	"context"
 	"errors"
-	"net/http"
 	"testing"
 	"time"
 
@@ -288,10 +287,7 @@ func TestGenerateParts_AudioOnlyResponse(t *testing.T) {
 			},
 		},
 	}
-	c := &Client{
-		modelClient: fake,
-		retryOpts:   Config{MaxRetries: new(uint64(1))}.buildRetryOptions(),
-	}
+	c := &Client{modelClient: fake}
 
 	resp, err := c.generateParts(ctx, "gemini-test", []*genai.Part{{Text: "voice please"}}, GenerateOptions{
 		ResponseMIMEType: "audio/wav",
@@ -325,14 +321,7 @@ func TestGenerateParts_ExtractsImagesAndAudios(t *testing.T) {
 			},
 		},
 	}
-	c := &Client{
-		modelClient: fake,
-		retryOpts: Config{
-			MaxRetries:   new(uint64(1)),
-			InitialDelay: time.Nanosecond,
-			MaxDelay:     time.Nanosecond,
-		}.buildRetryOptions(),
-	}
+	c := &Client{modelClient: fake}
 
 	resp, err := c.generateParts(ctx, "gemini-test", []*genai.Part{{Text: "hello"}}, GenerateOptions{})
 	if err != nil {
@@ -343,55 +332,6 @@ func TestGenerateParts_ExtractsImagesAndAudios(t *testing.T) {
 	}
 	if len(resp.Audios) != 1 || string(resp.Audios[0]) != "audio" {
 		t.Fatalf("Audios = %v, want audio", resp.Audios)
-	}
-}
-
-func TestGenerateParts_RetriesOnRateLimit(t *testing.T) {
-	ctx := context.Background()
-	fake := &fakeModelClient{
-		errs: []error{genai.APIError{Code: http.StatusTooManyRequests, Status: "RESOURCE_EXHAUSTED"}},
-	}
-	c := &Client{
-		modelClient: fake,
-		retryOpts: Config{
-			MaxRetries:   new(uint64(2)),
-			InitialDelay: time.Nanosecond,
-			MaxDelay:     time.Nanosecond,
-		}.buildRetryOptions(),
-	}
-
-	resp, err := c.generateParts(ctx, "gemini-test", []*genai.Part{{Text: "hello"}}, GenerateOptions{})
-	if err != nil {
-		t.Fatalf("429 の後にリトライで成功するはずですが、エラーが返りました: %v", err)
-	}
-	if resp.Text != "ok" {
-		t.Fatalf("Text = %q, want ok", resp.Text)
-	}
-	if fake.calls != 2 {
-		t.Fatalf("API 呼び出し回数 = %d, want 2 (初回 + リトライ1回)", fake.calls)
-	}
-}
-
-func TestGenerateParts_DoesNotRetryOnBadRequest(t *testing.T) {
-	ctx := context.Background()
-	fake := &fakeModelClient{
-		err: genai.APIError{Code: http.StatusBadRequest, Status: "INVALID_ARGUMENT"},
-	}
-	c := &Client{
-		modelClient: fake,
-		retryOpts: Config{
-			MaxRetries:   new(uint64(2)),
-			InitialDelay: time.Nanosecond,
-			MaxDelay:     time.Nanosecond,
-		}.buildRetryOptions(),
-	}
-
-	_, err := c.generateParts(ctx, "gemini-test", []*genai.Part{{Text: "hello"}}, GenerateOptions{})
-	if err == nil {
-		t.Fatal("400 エラーが返るべきですが、nil が返りました")
-	}
-	if fake.calls != 1 {
-		t.Fatalf("API 呼び出し回数 = %d, want 1 (リトライなし)", fake.calls)
 	}
 }
 
@@ -412,10 +352,7 @@ func TestGenerateParts_PopulatesUsage(t *testing.T) {
 			},
 		},
 	}
-	c := &Client{
-		modelClient: fake,
-		retryOpts:   Config{MaxRetries: new(uint64(1))}.buildRetryOptions(),
-	}
+	c := &Client{modelClient: fake}
 
 	resp, err := c.generateParts(ctx, "gemini-test", []*genai.Part{{Text: "hello"}}, GenerateOptions{})
 	if err != nil {
@@ -434,7 +371,6 @@ func TestGenerateParts_RequestTimeoutBoundsCall(t *testing.T) {
 	fake := &slowModelClient{delay: 50 * time.Millisecond}
 	c := &Client{
 		modelClient:    fake,
-		retryOpts:      Config{MaxRetries: new(uint64(1))}.buildRetryOptions(),
 		requestTimeout: time.Millisecond,
 	}
 

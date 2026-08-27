@@ -41,7 +41,7 @@ func (f *fakeVideoClient) GetVideosOperation(_ context.Context, operation *genai
 }
 
 func newVideoTestClient(video *fakeVideoClient) *Client {
-	return &Client{videoClient: video, retryOpts: Config{}.buildRetryOptions()}
+	return &Client{videoClient: video}
 }
 
 // TestStartVideoBuildsImageToVideoRequest は、開始フレームと生成パラメータが SDK の

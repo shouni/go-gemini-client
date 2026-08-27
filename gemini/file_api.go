@@ -1,7 +1,6 @@
 package gemini
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -33,26 +32,18 @@ type UploadedFile struct {
 // アップロード処理自体が成功した場合、たとえその後の Active 化処理でエラーが発生しても
 // サーバー側にリソースが残る可能性があるため、バックグラウンドでの削除を試みます。
 //
-// アップロードは Config のリトライ設定に従って再送されます。再送に備えて r は
-// 最初に全量をメモリへ読み込みます（この経路に来るのは画像・音声などの添付で、
-// ストリーミングが必要なサイズのデータは想定していません）。
+// アップロードはリトライされません。genai が再開可能アップロードのループにだけ
+// リトライ設定を渡さないためで、失敗したときの再試行は呼び出し側の判断です。
 //
 // バックグラウンド削除は投げっぱなしで、完了を待つ手段はありません。
 // 確実に削除したい場合は呼び出し側で DeleteFile を呼んでください。
 func (c *Client) UploadFile(ctx context.Context, r io.Reader, mimeType, displayName string) (UploadedFile, error) {
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return UploadedFile{}, fmt.Errorf("アップロードデータの読み込みに失敗しました: %w", err)
-	}
-
 	uploadCfg := &genai.UploadFileConfig{
 		MIMEType:    mimeType,
 		DisplayName: displayName,
 	}
 
-	file, err := runWithRetry(ctx, c.retryOpts, "File API Upload", func() (*genai.File, error) {
-		return c.fileClient.Upload(ctx, bytes.NewReader(data), uploadCfg)
-	})
+	file, err := c.fileClient.Upload(ctx, r, uploadCfg)
 	if err != nil {
 		return UploadedFile{}, fmt.Errorf("gemini File API へのアップロードに失敗しました: %w", err)
 	}
@@ -70,19 +61,16 @@ func (c *Client) UploadFile(ctx context.Context, r io.Reader, mimeType, displayN
 
 // DeleteFile は指定された名前のファイルを File API から削除します。
 //
-// 削除は Config のリトライ設定に従って再送されます。ファイルが既に存在しない場合
+// 削除は SDK 内蔵のリトライに従って再送されます。ファイルが既に存在しない場合
 // （前回の削除が実は成功していた場合など）は目的を達成しているため成功扱いです。
 func (c *Client) DeleteFile(ctx context.Context, name string) error {
 	if name == "" {
 		return nil
 	}
-	_, err := runWithRetry(ctx, c.retryOpts, "File API Delete", func() (*genai.DeleteFileResponse, error) {
-		resp, err := c.fileClient.Delete(ctx, name, nil)
-		if err != nil && isNotFoundAPIError(err) {
-			return nil, nil
-		}
-		return resp, err
-	})
+	_, err := c.fileClient.Delete(ctx, name, nil)
+	if err != nil && isNotFoundAPIError(err) {
+		err = nil
+	}
 	if err != nil {
 		return fmt.Errorf("ファイル %q の削除に失敗しました: %w", name, err)
 	}
@@ -98,9 +86,10 @@ func isNotFoundAPIError(err error) bool {
 
 // waitForFileActive は指定されたファイルが利用可能になるまでポーリングします。
 //
-// ステータス確認1回ごとにはリトライを掛けず、一時的な失敗はこのループが
-// fileStateMaxPollErrors 回まで受け流します。確認の内部でバックオフを効かせると
-// ポーリング間隔とタイムアウトの意味が失われるためです（veo.Client と同じ方針）。
+// ステータス確認1回ごとにはリトライを掛けず（checkFileState が noRetryHTTPOptions で
+// 打ち消します）、一時的な失敗はこのループが fileStateMaxPollErrors 回まで受け流します。
+// 確認の内部でバックオフを効かせるとポーリング間隔とタイムアウトの意味が
+// 失われるためです（PollVideo・veo.Client と同じ方針）。
 func (c *Client) waitForFileActive(ctx context.Context, fileName string) (string, error) {
 	consecutiveErrors := 0
 
@@ -154,7 +143,7 @@ func (c *Client) waitForFileActive(ctx context.Context, fileName string) (string
 }
 
 func (c *Client) checkFileState(ctx context.Context, fileName string) (uri string, done bool, err error) {
-	f, err := c.fileClient.Get(ctx, fileName, &genai.GetFileConfig{})
+	f, err := c.fileClient.Get(ctx, fileName, &genai.GetFileConfig{HTTPOptions: noRetryHTTPOptions()})
 	if err != nil {
 		return "", false, fmt.Errorf("ファイル %q のステータス確認に失敗しました: %w", fileName, err)
 	}

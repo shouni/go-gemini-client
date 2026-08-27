@@ -4,10 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 	"time"
 
-	"github.com/shouni/netarmor/retry"
 	"google.golang.org/genai"
 )
 
@@ -28,17 +28,15 @@ type Config struct {
 	ProjectID  string // Vertex AI: Google Cloud Project ID
 	LocationID string // Vertex AI: Location (e.g., "us-central1")
 
-	// MaxRetries は、1 回の呼び出しで許すリトライの回数です。
-	// nil は未設定で、DefaultMaxRetries を使います。
-	//
-	// ポインタなのは、0 に意味を 2 つ持たせられないためです。netarmor の
-	// retry.WithMaxRetries(0) は「リトライしない」ですが、構造体のゼロ値も 0 なので、
-	// 値型のままでは未設定と区別できず「リトライしない」を表現する方法がありませんでした
-	// （未設定を優先して既定値へ倒していたため、0 を書いても既定回数だけリトライしていました）。
-	//
-	//	cfg.MaxRetries = new(uint64(0)) // リトライしない
-	//	cfg.MaxRetries = new(uint64(3)) // 3 回までリトライする
-	MaxRetries *uint64
+	// MaxRetries は、1 回の呼び出しで許すリトライの回数です（初回実行は含みません）。
+	// 0 は未設定で、DefaultMaxRetries を使います。リトライを止めたい場合は
+	// DisableRetry を立ててください。
+	MaxRetries uint
+
+	// DisableRetry はリトライを完全に無効にし、1 回だけ実行します。
+	// 成功のたびに副作用が生まれる呼び出しで、応答を取りこぼした際の再送が
+	// 二重実行になる場合に使います。
+	DisableRetry bool
 
 	InitialDelay        time.Duration
 	MaxDelay            time.Duration
@@ -72,14 +70,6 @@ type Config struct {
 	// スキップして認証ヘッダ無しで送ってしまいますが、toClientConfig が Vertex AI では
 	// 認証情報を付け直します。渡したインスタンス自体は書き換えず、複製を使います。
 	HTTPClient *http.Client
-
-	// OnRetry はリトライ直前に呼び出されます。nil の場合は何もしません。
-	// 429 が続いた場合の可視化などに使用します。
-	//
-	//	cfg.OnRetry = func(err error, attempt uint, next time.Duration) {
-	//	    slog.Warn("gemini retry", "attempt", attempt, "next", next, "err", err)
-	//	}
-	OnRetry retry.NotifyFunc
 }
 
 // isVertexAI は、Vertex AI を使う設定（ProjectID と LocationID の両方）が揃っているかを返します。
@@ -128,6 +118,7 @@ func (c Config) validate() error {
 // タイムアウトを設定したつもりで認証を捨てることになります。
 func (c Config) toClientConfig() (*genai.ClientConfig, error) {
 	cc := &genai.ClientConfig{}
+	cc.HTTPOptions.RetryOptions = c.retryOptions()
 	if c.isVertexAI() {
 		cc.Project = c.ProjectID
 		cc.Location = c.LocationID
@@ -164,57 +155,49 @@ func orDefault(v, def time.Duration) time.Duration {
 	return def
 }
 
-// retryParams は Config から解決済みのリトライ設定値です。
-// retry.Option は不透明な関数値でテストから検査できないため、
-// 「どの値が採用されたか」を検証可能にする中間表現として保持しています。
-type retryParams struct {
-	MaxRetries      uint
-	InitialInterval time.Duration
-	MaxInterval     time.Duration
-}
-
-// retryParams は未設定項目をデフォルトで補完したリトライ設定を返します。
+// retryOptions は Config を genai SDK 内蔵リトライの設定へ変換します。
+// nil を返すと SDK はリトライせず 1 回だけ実行します。
 //
-// MaxRetries は nil のときだけ DefaultMaxRetries に倒します。明示された 0 は
-// そのまま netarmor へ渡り「リトライしない」になります。時間系の項目が orDefault で
-// 「正の値でなければ既定値」なのと扱いが違うのは、回数には 0 が意味を持つためです。
-func (c Config) retryParams() retryParams {
-	maxRetries := DefaultMaxRetries
-	if c.MaxRetries != nil {
-		maxRetries = *c.MaxRetries
+// 対象のステータス（408/429/5xx）と通信エラーの判定は SDK に任せます。
+// 写し取ると、向こうが対象を増やしたときにこちらだけ古い一覧を持ち続けます。
+func (c Config) retryOptions() *genai.HTTPRetryOptions {
+	if c.DisableRetry {
+		return nil
 	}
 
-	return retryParams{
-		MaxRetries:      clampToUint(maxRetries),
-		InitialInterval: orDefault(c.InitialDelay, DefaultInitialDelay),
-		MaxInterval:     orDefault(c.MaxDelay, DefaultMaxDelay),
+	maxRetries := c.MaxRetries
+	if maxRetries == 0 {
+		maxRetries = DefaultMaxRetries
+	}
+	initialDelay := orDefault(c.InitialDelay, DefaultInitialDelay)
+	maxDelay := orDefault(c.MaxDelay, DefaultMaxDelay)
+
+	return &genai.HTTPRetryOptions{
+		Attempts:     new(attemptsFrom(maxRetries)),
+		InitialDelay: new(initialDelay.Seconds()),
+		MaxDelay:     new(maxDelay.Seconds()),
+		// SDK の既定は U(0, 1秒) の加算で、数十秒の間隔ではほぼ効きません。並列の
+		// 生成が同じ 429 で弾かれたとき散らすのはジッタだけなので（callguard の
+		// 発射間隔はリトライに掛からない）、間隔に比例した幅を持たせます。
+		Jitter: new(initialDelay.Seconds() / 2),
 	}
 }
 
-// options は netarmor の retry.Option 列に変換します。
-func (p retryParams) options() []retry.Option {
-	return []retry.Option{
-		retry.WithMaxRetries(p.MaxRetries),
-		retry.WithInitialInterval(p.InitialInterval),
-		retry.WithMaxInterval(p.MaxInterval),
-	}
+// noRetryHTTPOptions は、クライアントのリトライ設定をリクエスト単位で打ち消します。
+// ポーリングのように呼び出し側が間隔とタイムアウトを持っている経路で使います。
+// nil ではなく「1 回だけ」を渡すのは、genai がリクエスト側の RetryOptions を
+// 非 nil のときだけ上書き適用するためです。
+func noRetryHTTPOptions() *genai.HTTPOptions {
+	return &genai.HTTPOptions{RetryOptions: &genai.HTTPRetryOptions{Attempts: new(int32(1))}}
 }
 
-// buildRetryOptions は設定から netarmor の retry.Option 列を構築します。
-func (c Config) buildRetryOptions() []retry.Option {
-	opts := c.retryParams().options()
-	if c.OnRetry != nil {
-		opts = append(opts, retry.WithNotify(c.OnRetry))
+// attemptsFrom はリトライ回数を genai の総試行回数（初回を含む）へ変換します。
+// int32 に収まらない指定は飽和させます。
+func attemptsFrom(maxRetries uint) int32 {
+	if uint64(maxRetries) >= math.MaxInt32 {
+		return math.MaxInt32
 	}
-	return opts
-}
-
-// clampToUint は uint64 -> uint の変換を飽和させます（32bit 環境での切り詰め防止）。
-func clampToUint(v uint64) uint {
-	if v > uint64(^uint(0)) {
-		return ^uint(0)
-	}
-	return uint(v)
+	return int32(maxRetries) + 1
 }
 
 func (c Config) getFilePollingInterval() time.Duration {

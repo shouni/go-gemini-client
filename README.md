@@ -243,10 +243,8 @@ resp, err := client.GenerateWithAttachments(ctx, "gemini-3.7-flash",
 	gemini.GenerateOptions{})
 ```
 
-File API の呼び出しにも `Config` のリトライ設定が効きます。
-
-- **Upload** は再送に備えて入力を最初に全量メモリへ読み込みます（画像・音声などの添付が対象で、ストリーミングが必要なサイズは想定していません）
-- **Delete** は対象が既に存在しない場合（前回の削除が実は成功していた場合など）を成功として扱います
+- **Upload** はリトライされません。genai SDK が再開可能アップロードの経路にだけリトライを掛けないためで、再試行するかは呼び出し側の判断です
+- **Delete** はリトライ対象で、対象が既に存在しない場合（前回の削除が実は成功していた場合など）を成功として扱います
 - **Active 化待ちのステータス確認**にはリトライを掛けず、一時的な失敗をループ側で 5 回まで受け流します（ポーリングの内部でバックオフを効かせると間隔とタイムアウトの意味が失われるためです）
 - 失敗時のバックグラウンド削除の上限時間は `Config.AsyncCleanupTimeout`（既定 15 秒）で調整できます
 
@@ -259,7 +257,8 @@ File API の呼び出しにも `Config` のリトライ設定が効きます。
 | `APIKey` | Gemini API キー。Google AI Studio / Gemini API で利用します。 | - |
 | `ProjectID` | Google Cloud プロジェクト ID。Vertex AI で利用します。 | - |
 | `LocationID` | Vertex AI のリージョン。例: `asia-northeast1`, `us-central1` | - |
-| `MaxRetries` | 最大リトライ回数（`*uint64`）。`nil` は既定値、`new(uint64(0))` は再試行しない | `1` |
+| `MaxRetries` | 最大リトライ回数（初回実行を含みません）。`0` は未設定として既定値を使います | `1` |
+| `DisableRetry` | リトライを無効にし、1 回だけ実行します | `false` |
 | `InitialDelay` | リトライ開始時の待機時間 | `30s` |
 | `MaxDelay` | リトライ待機時間の上限 | `120s` |
 | `FilePollingInterval` | File API の状態確認間隔 | `2s` |
@@ -268,7 +267,6 @@ File API の呼び出しにも `Config` のリトライ設定が効きます。
 | `AsyncCleanupTimeout` | アップロード後処理失敗時のバックグラウンド削除の上限時間 | `15s` |
 | `Logger` | ライブラリ内部ログの出力先（`*slog.Logger`） | `slog.Default()` |
 | `HTTPClient` | genai SDK が使う HTTP クライアント。タイムアウトやプロキシ、SSRF 対策済みクライアント（`securenet.NewSafeHTTPClient` 等）の注入に使います | SDK 既定 |
-| `OnRetry` | リトライ直前に呼ばれる通知関数 | なし |
 
 `APIKey` と `ProjectID` / `LocationID` は排他的です。Vertex AI を使う場合は `ProjectID` と `LocationID` の両方を指定してください。
 
@@ -506,7 +504,7 @@ Veo は入力系統を併用できません。`StartVideo` は API が確実に�
 
 `gemini.PollVideo` は **1 回の問い合わせに徹し、リトライを掛けません**。ポーリング自体が繰り返しの仕組みなので、その内部でさらにバックオフを効かせると 1 回の問い合わせに数十秒かかりうる二重の待ちになり、設定したポーリング間隔とタイムアウトが意味を失うためです。一時的な失敗を何回まで許容するかは、間隔とタイムアウトを持っている `veo.Client` の判断で、`WithMaxPollErrors`（既定 10 回）で調整します。
 
-一方、**投函（`StartVideo`）には `Config` のリトライ設定が効きます**。レート制限や一時的なサーバーエラーで 1 本分の生成が落ちるのを防ぐためです。
+一方、**投函（`StartVideo`）にはリトライが効きます**。レート制限や一時的なサーバーエラーで 1 本分の生成が落ちるのを防ぐためです。
 
 `Wait` は最初の問い合わせを間隔待ちなしで直ちに行います。別実行からの再開ではオペレーションが既に完了していることが多く、確認前に 1 interval 分（既定 10 秒）待つのは純粋な死に時間になるためです。
 
@@ -552,7 +550,6 @@ req.ModifyRequestBody = func(body map[string]any) map[string]any {
 ## 🤝 依存関係 (Dependencies)
 
 - [google.golang.org/genai](https://pkg.go.dev/google.golang.org/genai) - Google Gemini 公式 SDK
-- [shouni/netarmor](https://github.com/shouni/netarmor) - リトライ戦略（`retry`）とネットワークセキュリティ
 - [golang.org/x/oauth2](https://pkg.go.dev/golang.org/x/oauth2) - `Config.HTTPClient` へ認証情報を付け直すために使用
 - [golang.org/x/sync](https://pkg.go.dev/golang.org/x/sync) - `callguard` の singleflight
 - [golang.org/x/time](https://pkg.go.dev/golang.org/x/time) - `callguard` のレート制限
