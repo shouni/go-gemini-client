@@ -1,5 +1,5 @@
 // Package gemini は、Gemini API / Vertex AI 向けの genai SDK をラップし、
-// リトライや File API アップロードを備えたクライアントを提供します。
+// リトライ設定・File API アップロード・レスポンス抽出を備えたクライアントを提供します。
 //
 // 公開 API に genai の型は現れません。設定値の型と定数は別名として再エクスポート
 // してあるため（ThinkingLevel / SafetyThreshold / Schema / SchemaType /

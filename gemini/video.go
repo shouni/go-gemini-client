@@ -116,9 +116,9 @@ type VideoOperation struct {
 // この呼び出しはオペレーションの投函までで、完了は待ちません。完了を待つには
 // 返された Name を PollVideo に渡してポーリングするか、veo パッケージを使ってください。
 //
-// 投函自体は Config のリトライ設定に従って再送されます（レート制限や一時的な
+// 投函自体は SDK 内蔵のリトライに従って再送されます（レート制限や一時的な
 // サーバーエラーで1本分の生成が落ちるのを防ぐため）。ポーリング側は逆にリトライを
-// 挟みません（PollVideo のコメント参照）。
+// 打ち消します（PollVideo のコメント参照）。
 func (c *Client) StartVideo(ctx context.Context, modelName string, req VideoRequest) (*VideoOperation, error) {
 	if modelName == "" {
 		return nil, ErrEmptyModelName
@@ -141,11 +141,11 @@ func (c *Client) StartVideo(ctx context.Context, modelName string, req VideoRequ
 
 // PollVideo は動画生成オペレーションの現在の状態を1回だけ問い合わせます。
 //
-// 意図的にリトライを挟みません。ポーリング自体が繰り返しの仕組みなので、その内部で
-// さらにバックオフを効かせると1回の問い合わせに数十秒かかりうる二重の待ちになり、
-// 呼び出し側が設定したポーリング間隔とタイムアウトが意味を失います。一時的な失敗を
-// 何回まで許容するかは、間隔とタイムアウトを持っているループ側の判断です
-// （veo.Client がその実装です）。
+// 意図的にリトライを挟まず、noRetryHTTPOptions でクライアント側の設定を打ち消します。
+// ポーリング自体が繰り返しの仕組みなので、その内部でさらにバックオフを効かせると
+// 1回の問い合わせに数十秒かかりうる二重の待ちになり、呼び出し側が設定した
+// ポーリング間隔とタイムアウトが意味を失います。一時的な失敗を何回まで許容するかは、
+// 間隔とタイムアウトを持っているループ側の判断です（veo.Client がその実装です）。
 func (c *Client) PollVideo(ctx context.Context, operationName string) (*VideoOperation, error) {
 	if strings.TrimSpace(operationName) == "" {
 		return nil, ErrEmptyOperationName

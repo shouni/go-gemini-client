@@ -158,9 +158,8 @@ func orDefault(v, def time.Duration) time.Duration {
 // retryOptions は Config を genai SDK 内蔵リトライの設定へ変換します。
 // nil を返すと SDK はリトライせず 1 回だけ実行します。
 //
-// リトライを SDK に任せているのは、genai が HTTP 層で 408/429/5xx と通信エラーを
-// 判定するためです。自前で包んでいたころは判定表を写し取る必要があり、SDK 側が
-// 対象を増やしたときにこちらだけ古い一覧を持ち続けていました。
+// 対象のステータス（408/429/5xx）と通信エラーの判定は SDK に任せます。
+// 写し取ると、向こうが対象を増やしたときにこちらだけ古い一覧を持ち続けます。
 func (c Config) retryOptions() *genai.HTTPRetryOptions {
 	if c.DisableRetry {
 		return nil
@@ -177,19 +176,17 @@ func (c Config) retryOptions() *genai.HTTPRetryOptions {
 		Attempts:     new(attemptsFrom(maxRetries)),
 		InitialDelay: new(initialDelay.Seconds()),
 		MaxDelay:     new(maxDelay.Seconds()),
-		// SDK の既定ジッタは U(0, 1秒) の加算で、InitialDelay が数十秒の設定では
-		// ほぼ効きません。並列の生成が同じ 429 で弾かれたとき、散らすのはジッタ
-		// だけです（callguard の発射間隔はリトライには掛からない）。待ち時間に対して
-		// 幅を持たせるため、初期間隔の半分を指定します。
+		// SDK の既定は U(0, 1秒) の加算で、数十秒の間隔ではほぼ効きません。並列の
+		// 生成が同じ 429 で弾かれたとき散らすのはジッタだけなので（callguard の
+		// 発射間隔はリトライに掛からない）、間隔に比例した幅を持たせます。
 		Jitter: new(initialDelay.Seconds() / 2),
 	}
 }
 
 // noRetryHTTPOptions は、クライアントのリトライ設定をリクエスト単位で打ち消します。
 // ポーリングのように呼び出し側が間隔とタイムアウトを持っている経路で使います。
-//
-// nil ではなく「1 回だけ」を明示するのは、genai がリクエスト側の RetryOptions を
-// 非 nil のときだけクライアント設定に上書き適用するためです。
+// nil ではなく「1 回だけ」を渡すのは、genai がリクエスト側の RetryOptions を
+// 非 nil のときだけ上書き適用するためです。
 func noRetryHTTPOptions() *genai.HTTPOptions {
 	return &genai.HTTPOptions{RetryOptions: &genai.HTTPRetryOptions{Attempts: new(int32(1))}}
 }
