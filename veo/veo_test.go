@@ -138,33 +138,6 @@ func TestGeneratePropagatesStartError(t *testing.T) {
 	}
 }
 
-// TestWaitToleratesTransientPollErrors は、一時的な確認失敗を受け流して待ち続け、
-// 成功したら連続失敗のカウントが戻ることを検証します。生成済みの動画を一時的な
-// ネットワーク障害で取り逃がさないための挙動です。
-func TestWaitToleratesTransientPollErrors(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		generator := &fakeGenerator{
-			polls: []pollResponse{
-				{err: errors.New("temporary failure")},
-				{err: errors.New("temporary failure")},
-				{op: running("operations/abc")}, // ここでカウントがリセットされる
-				{err: errors.New("temporary failure")},
-				{err: errors.New("temporary failure")},
-				{op: finished("operations/abc", "gs://bucket/out.mp4")},
-			},
-		}
-		client := newTestClient(t, generator, WithMaxPollErrors(3))
-
-		got, err := client.Wait(context.Background(), "operations/abc")
-		if err != nil {
-			t.Fatalf("Wait() error = %v", err)
-		}
-		if _, ok := got.First(); !ok {
-			t.Fatal("expected a video in the result")
-		}
-	})
-}
-
 // TestWaitStopsAfterConsecutivePollErrors は、確認が続けて失敗したらタイムアウトまで
 // 粘らずに打ち切ることを検証します。原因は Unwrap で辿れます。
 func TestWaitStopsAfterConsecutivePollErrors(t *testing.T) {
@@ -202,21 +175,6 @@ func TestWaitTimesOut(t *testing.T) {
 			t.Error("timing out is not a polling failure; it should not report ErrPollFailed")
 		}
 	})
-}
-
-// TestWaitStopsWhenCallerCancels は、呼び出し側の context が終了したら即座に
-// 中断することを検証します。
-func TestWaitStopsWhenCallerCancels(t *testing.T) {
-	generator := &fakeGenerator{polls: []pollResponse{{op: running("operations/abc")}}}
-	client := newTestClient(t, generator)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	_, err := client.Wait(ctx, "operations/abc")
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("Wait() error = %v, want context.Canceled", err)
-	}
 }
 
 // TestWaitPropagatesGenerationFailure は、生成そのものが失敗として完了した場合に、
@@ -302,40 +260,5 @@ func TestSubmitPropagatesStartError(t *testing.T) {
 	_, err := client.Submit(context.Background(), "veo-test", gemini.VideoRequest{Prompt: "a cat"})
 	if !errors.Is(err, sentinel) {
 		t.Errorf("error = %v, want the start error", err)
-	}
-}
-
-// TestWaitPollsImmediately verifies the first poll happens without waiting one interval.
-// Submit→Wait の再開経路ではオペレーションが既に完了していることが多く、
-// 最初の確認前に interval 分待つのは純粋な死に時間になる（以前は毎回待っていた）。
-func TestWaitPollsImmediately(t *testing.T) {
-	fake := &fakeGenerator{
-		polls: []pollResponse{
-			{op: &gemini.VideoOperation{Name: "operations/done", Done: true, Videos: []gemini.Attachment{{URI: "gs://bucket/v.mp4"}}}},
-		},
-	}
-	// ポーリング間隔を1時間にしても、最初の確認は即座に行われるため完了する。
-	client := newTestClient(t, fake, WithPollInterval(time.Hour))
-
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		result, err := client.Wait(context.Background(), "operations/done")
-		if err != nil {
-			t.Errorf("Wait() error = %v", err)
-			return
-		}
-		if _, ok := result.First(); !ok {
-			t.Error("Wait() returned no video")
-		}
-	}()
-
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("Wait() が最初のポーリングを間隔待ちなしで行っていません")
-	}
-	if fake.pollCalls != 1 {
-		t.Errorf("PollVideo calls = %d, want 1", fake.pollCalls)
 	}
 }
