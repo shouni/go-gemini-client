@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"time"
 
 	"google.golang.org/genai"
+
+	"github.com/shouni/go-gemini-client/internal/poll"
 )
 
 // fileStateMaxPollErrors は、ファイルの Active 化待ちでステータス確認の連続失敗を
@@ -86,62 +87,29 @@ func isNotFoundAPIError(err error) bool {
 
 // waitForFileActive は指定されたファイルが利用可能になるまでポーリングします。
 //
-// 制限時間（FilePollingTimeout）は待機**全体**に掛けます。ポーリングの合間だけで
-// 見張ると、ステータス確認の 1 回が応答を返さないまま留まったときに時間切れの判定へ
-// 到達できません（genai の既定 HTTP クライアントにタイムアウトはありません）。
+// 待ち方（1 回目を間隔なしで撃つ・制限時間を待機全体に掛ける・一時的な失敗を数える）は
+// internal/poll が持ちます。veo の動画生成と同じ骨格で、2 か所に書くと片方だけ直る
+// 種類の logic だからです。ここに残るのは「何を待つか」だけです。
 //
-// ステータス確認1回ごとにはリトライを掛けず（checkFileState が noRetryHTTPOptions で
-// 打ち消します）、一時的な失敗はこのループが fileStateMaxPollErrors 回まで受け流します。
-// 確認の内部でバックオフを効かせるとポーリング間隔とタイムアウトの意味が
-// 失われるためです（PollVideo・veo.Client と同じ方針）。
+// ステータス確認1回ごとにはリトライを掛けません（checkFileState が noRetryHTTPOptions で
+// 打ち消します）。確認の内部でバックオフを効かせるとポーリング間隔とタイムアウトの意味が
+// 失われるためで、一時的な失敗は fileStateMaxPollErrors 回まで受け流します
+// （PollVideo・veo.Client と同じ方針）。
 func (c *Client) waitForFileActive(ctx context.Context, fileName string) (string, error) {
-	waitCtx, cancel := context.WithTimeout(ctx, c.filePollingTimeout)
-	defer cancel()
-
-	ticker := time.NewTicker(c.filePollingInterval)
-	defer ticker.Stop()
-
-	consecutiveErrors := 0
-	for {
-		uri, done, err := c.checkFileState(waitCtx, fileName)
-		switch {
-		case done:
-			return uri, err
-
-		case err != nil && waitCtx.Err() != nil:
-			// 待ち時間の上限に達したことによる失敗は「一時的な失敗」ではない。
-			return "", c.fileWaitDeadlineError(ctx, fileName, waitCtx.Err())
-
-		case err != nil:
-			consecutiveErrors++
-			if consecutiveErrors >= fileStateMaxPollErrors {
-				return "", fmt.Errorf("ファイル %q のステータス確認が %d 回連続で失敗しました: %w", fileName, consecutiveErrors, err)
-			}
+	loop := poll.Loop{
+		Interval:  c.filePollingInterval,
+		Timeout:   c.filePollingTimeout,
+		MaxErrors: fileStateMaxPollErrors,
+		Subject:   fmt.Sprintf("ファイル %q", fileName),
+		OnTransientError: func(err error, consecutive int) {
 			c.log().WarnContext(ctx, "ファイルステータスの確認に失敗しました。再確認します",
-				"name", fileName, "consecutive_errors", consecutiveErrors, "error", err)
-
-		default:
-			consecutiveErrors = 0
-		}
-
-		select {
-		case <-waitCtx.Done():
-			return "", c.fileWaitDeadlineError(ctx, fileName, waitCtx.Err())
-		case <-ticker.C:
-		}
+				"name", fileName, "consecutive_errors", consecutive, "error", err)
+		},
 	}
-}
 
-// fileWaitDeadlineError は、Active 化待ちを打ち切った理由をエラーに整えます。
-// 呼び出し側の context が終了した場合と、このクライアントの制限時間に達した場合とでは
-// 対処が異なる（前者は上位のキャンセル、後者はサーバー側の処理が長すぎる）ため、
-// 区別できるようにしています。
-func (c *Client) fileWaitDeadlineError(ctx context.Context, fileName string, waitErr error) error {
-	if ctx.Err() != nil {
-		return fmt.Errorf("ファイル %q の待機中にコンテキストがキャンセルされました: %w", fileName, ctx.Err())
-	}
-	return fmt.Errorf("ファイル %q の処理が制限時間（%v）内に完了しませんでした: %w",
-		fileName, c.filePollingTimeout, waitErr)
+	return loop.Run(ctx, func(pollCtx context.Context) (string, bool, error) {
+		return c.checkFileState(pollCtx, fileName)
+	})
 }
 
 func (c *Client) checkFileState(ctx context.Context, fileName string) (uri string, done bool, err error) {

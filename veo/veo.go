@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/shouni/go-gemini-client/gemini"
+	"github.com/shouni/go-gemini-client/internal/poll"
 )
 
 // 入力・結果に関するセンチネルエラーです。呼び出し側は errors.Is で判定し、
@@ -123,64 +124,42 @@ func (c *Client) start(ctx context.Context, modelName string, req Request) (*gem
 // ようにするためです（実行時間に上限のあるジョブ基盤で、投函だけ済ませて一旦戻り、
 // 次の実行で名前を渡して待ちを再開する、といった使い方ができます）。
 //
-// 最初の問い合わせは間隔を待たずに直ちに行います。別実行からの再開では
-// オペレーションが既に完了していることが多く、そこで 1 interval 分（既定 10 秒）
-// 待ってから確認するのは純粋な死に時間になるためです。
+// 待ち方は internal/poll が持ちます。最初の問い合わせは間隔を待たずに直ちに行い
+// （再開ではオペレーションが既に完了していることが多く、1 interval 分＝既定 10 秒
+// 待ってから確認するのは純粋な死に時間になるためです）、制限時間は実行中の 1 回にも
+// 掛かります。
 //
-// 1回ごとの問い合わせにはリトライを掛けません。一時的な失敗はこのループが
-// maxPollErrors 回まで受け流し、それを超えた時点で ErrPollFailed として打ち切ります
+// 1回ごとの問い合わせにはリトライを掛けません。一時的な失敗は maxPollErrors 回まで
+// 受け流し、それを超えた時点で ErrPollFailed として打ち切ります
 // （gemini.PollVideo のコメント参照）。
 func (c *Client) Wait(ctx context.Context, operationName string) (*Result, error) {
 	if strings.TrimSpace(operationName) == "" {
 		return nil, ErrMissingOperationName
 	}
 
-	waitCtx, cancel := context.WithTimeout(ctx, c.pollTimeout)
-	defer cancel()
-
-	ticker := time.NewTicker(c.pollInterval)
-	defer ticker.Stop()
-
-	consecutiveErrors := 0
-	for {
-		op, err := c.generator.PollVideo(waitCtx, operationName)
-		switch {
-		case err != nil && waitCtx.Err() != nil:
-			// 待ち時間の上限に達したことによる失敗は「一時的な失敗」ではない。
-			return nil, c.waitDeadlineError(ctx, operationName, waitCtx.Err())
-		case err != nil:
-			consecutiveErrors++
-			if consecutiveErrors >= c.maxPollErrors {
-				return nil, fmt.Errorf("%w: オペレーション %q の確認が %d 回連続で失敗しました: %w",
-					ErrPollFailed, operationName, consecutiveErrors, err)
-			}
+	loop := poll.Loop{
+		Interval:        c.pollInterval,
+		Timeout:         c.pollTimeout,
+		MaxErrors:       c.maxPollErrors,
+		Subject:         fmt.Sprintf("オペレーション %q", operationName),
+		RepeatedFailure: ErrPollFailed,
+		OnTransientError: func(err error, consecutive int) {
 			c.logger.WarnContext(ctx, "動画生成の状況確認に失敗しました。再確認します",
-				"operation", operationName, "consecutive_errors", consecutiveErrors, "error", err)
-		default:
-			consecutiveErrors = 0
-			if op.Done {
-				return resultFrom(op)
-			}
-		}
-
-		select {
-		case <-waitCtx.Done():
-			return nil, c.waitDeadlineError(ctx, operationName, waitCtx.Err())
-		case <-ticker.C:
-		}
+				"operation", operationName, "consecutive_errors", consecutive, "error", err)
+		},
 	}
-}
 
-// waitDeadlineError は、完了待ちを打ち切った理由をエラーに整えます。
-// 呼び出し側の context が終了した場合と、このクライアントのタイムアウトに達した
-// 場合とでは対処が異なる（前者は上位のキャンセル、後者は生成が長すぎる）ため、
-// 区別できるようにしています。
-func (c *Client) waitDeadlineError(ctx context.Context, operationName string, waitErr error) error {
-	if ctx.Err() != nil {
-		return fmt.Errorf("オペレーション %q の完了待ちが中断されました: %w", operationName, ctx.Err())
+	op, err := loop.Run(ctx, func(pollCtx context.Context) (*gemini.VideoOperation, bool, error) {
+		op, err := c.generator.PollVideo(pollCtx, operationName)
+		if err != nil {
+			return nil, false, err
+		}
+		return op, op.Done, nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	return fmt.Errorf("オペレーション %q が制限時間（%v）内に完了しませんでした: %w",
-		operationName, c.pollTimeout, waitErr)
+	return resultFrom(op)
 }
 
 // resultFrom は、完了したオペレーションを結果へ変換します。
