@@ -3,6 +3,7 @@ package lyria
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"slices"
 
 	"github.com/shouni/go-gemini-client/callguard"
 )
@@ -28,5 +29,5 @@ func calculateImagesHash(images []ImagePayload) string {
 
 // cloneBytes はバイト列を呼び出し元が安全に変更できるように複製します。
 func cloneBytes(src []byte) []byte {
-	return append([]byte(nil), src...)
+	return slices.Clone(src)
 }

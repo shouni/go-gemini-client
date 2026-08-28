@@ -99,9 +99,9 @@ func TestDoDeduplicatesConcurrentCalls(t *testing.T) {
 }
 
 // TestDoWaitsForRateIntervalOutsideExecTimeout は、発射間隔の待機が
-// 1 回あたりの上限時間に**数えられない**ことを検証します。
+// 1 回あたりの上限時間に数えられないことを検証します。
 //
-// **数えてしまうと、混雑しているだけでタイムアウトします。** 上限時間より長く
+// 数えてしまうと、混雑しているだけでタイムアウトします。上限時間より長く
 // 待たされた 2 本目が、実行そのものは一瞬でも失敗するようになります。
 func TestDoWaitsForRateIntervalOutsideExecTimeout(t *testing.T) {
 	t.Parallel()

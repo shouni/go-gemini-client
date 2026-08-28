@@ -7,6 +7,8 @@
 // lyria パッケージは互換のため MusicRecipe = music.Recipe などの別名を公開しています。
 package music
 
+import "slices"
+
 // AIModels selects the text and audio models used by music generation.
 //
 // Recipe に埋め込まれるため、JSON タグは Recipe の他のフィールドと
@@ -40,7 +42,7 @@ func (d *LyricsDraft) Clone() *LyricsDraft {
 	}
 
 	dst := *d
-	dst.Keywords = append([]string(nil), d.Keywords...)
+	dst.Keywords = slices.Clone(d.Keywords)
 	return &dst
 }
 
@@ -70,17 +72,17 @@ func (r *Recipe) IsJapanese() bool {
 }
 
 // Clone は Recipe と内部のスライスやポインタを複製します。
+//
+// スライスは slices.Clone で写します。nil は nil、空は空のまま残るため、複製を
+// 経由しても JSON のワイヤ形式（instruments の null と []）が変わりません。
 func (r *Recipe) Clone() *Recipe {
 	if r == nil {
 		return nil
 	}
 
 	dst := *r
-	dst.Instruments = append([]string(nil), r.Instruments...)
-	if r.Sections != nil {
-		dst.Sections = make([]Section, len(r.Sections))
-		copy(dst.Sections, r.Sections)
-	}
+	dst.Instruments = slices.Clone(r.Instruments)
+	dst.Sections = slices.Clone(r.Sections)
 	dst.Lyrics = r.Lyrics.Clone()
 	if r.Seed != nil {
 		v := *r.Seed

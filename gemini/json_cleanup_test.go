@@ -87,8 +87,8 @@ func TestCleanJSONResponse(t *testing.T) {
 }
 
 // TestCleanJSONResponseRepairsBrokenStrings は、文字列リテラルの中の崩れを補修する
-// ことを検証します。**構造化出力を指定していても起こり、応答を返しきったあとの崩れ
-// なので API の再試行では直りません。** 台本の抜粋・歌詞・台詞のように複数行の本文を
+// ことを検証します。構造化出力を指定していても起こり、応答を返しきったあとの崩れ
+// なので API の再試行では直りません。台本の抜粋・歌詞・台詞のように複数行の本文を
 // JSON に載せる用途で出ます。
 func TestCleanJSONResponseRepairsBrokenStrings(t *testing.T) {
 	t.Parallel()

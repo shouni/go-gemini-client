@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"golang.org/x/oauth2/google"
@@ -367,17 +368,20 @@ func TestGenerateParts_PopulatesUsage(t *testing.T) {
 }
 
 func TestGenerateParts_RequestTimeoutBoundsCall(t *testing.T) {
-	ctx := context.Background()
-	fake := &slowModelClient{delay: 50 * time.Millisecond}
-	c := &Client{
-		modelClient:    fake,
-		requestTimeout: time.Millisecond,
-	}
+	// 上限時間の経過はバブル内の仮想時計で進みます。実運用に近い値のまま、
+	// 実時間を消費せずに検証できます。
+	synctest.Test(t, func(t *testing.T) {
+		fake := &slowModelClient{delay: time.Hour}
+		c := &Client{
+			modelClient:    fake,
+			requestTimeout: 30 * time.Second,
+		}
 
-	_, err := c.generateParts(ctx, "gemini-test", []*genai.Part{{Text: "hello"}}, GenerateOptions{})
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("RequestTimeout が効いていません: err = %v", err)
-	}
+		_, err := c.generateParts(context.Background(), "gemini-test", []*genai.Part{{Text: "hello"}}, GenerateOptions{})
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("RequestTimeout が効いていません: err = %v", err)
+		}
+	})
 }
 
 // slowModelClient は RequestTimeout の検証用に、context の期限まで応答しないフェイクです。
