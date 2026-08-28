@@ -174,7 +174,7 @@ func TestWaitForFileActive_PollsUntilActive(t *testing.T) {
 // TestWaitForFileActive_TimeoutBoundsInFlightCheck は、応答を返さないステータス確認が
 // 制限時間で打ち切られることを検証します。
 //
-// **制限時間をポーリングの合間でしか見張らない実装では、この待機は終わりません。**
+// 制限時間をポーリングの合間でしか見張らない実装では、この待機は終わりません。
 // 確認の中で止まっている間は時間切れの判定へ到達できず、genai の既定 HTTP クライアントにも
 // タイムアウトが無いためです。
 func TestWaitForFileActive_TimeoutBoundsInFlightCheck(t *testing.T) {
