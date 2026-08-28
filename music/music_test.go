@@ -86,6 +86,21 @@ func TestRecipeCloneIsDeep(t *testing.T) {
 	}
 }
 
+// TestRecipeCloneKeepsSliceShape は、複製がスライスの nil と空を取り違えないことを
+// 検証します。Instruments と Sections には omitempty が無いため、空スライスが nil へ
+// 化けると保存済みレシピの JSON が [] から null に変わります。
+func TestRecipeCloneKeepsSliceShape(t *testing.T) {
+	filled := &Recipe{Instruments: []string{}, Sections: []Section{}}
+	if got := filled.Clone(); got.Instruments == nil || got.Sections == nil {
+		t.Errorf("空スライスが nil になりました: %+v", got)
+	}
+
+	var empty Recipe
+	if got := empty.Clone(); got.Instruments != nil || got.Sections != nil {
+		t.Errorf("nil スライスが空スライスになりました: %+v", got)
+	}
+}
+
 func TestIsJapanese(t *testing.T) {
 	for _, tt := range []struct {
 		lang string
