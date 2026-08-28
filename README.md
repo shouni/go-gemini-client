@@ -277,7 +277,7 @@ resp, err := client.GenerateWithAttachments(ctx, "gemini-3.7-flash",
 
 ## 🧪 生成オプション (`gemini.GenerateOptions`)
 
-ゼロ値が意味を持つ項目（`Temperature: 0` = 最も決定的、`ThinkingBudget: 0` = 思考無効）は、「未設定」と区別するためポインタ型です。設定には Go 1.26 の `new(式)` を使います（`new(float32(0))`）。`gemini.Ptr` は互換のため残していますが、`go fix` で `new` へ置き換わります。
+ゼロ値が意味を持つ項目（`Temperature: 0` = 最も決定的、`ThinkingBudget: 0` = 思考無効）は、「未設定」と区別するためポインタ型です。設定には `new(式)` を使います（`new(float32(0))`）。
 
 | 設定項目 | 役割 |
 | --- | --- |
