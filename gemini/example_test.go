@@ -8,7 +8,7 @@ import (
 )
 
 // 生成パラメータはリクエストごとに GenerateOptions で指定します。
-// Temperature のようにゼロ値が意味を持つ項目はポインタなので、Ptr を使います。
+// Temperature のようにゼロ値が意味を持つ項目はポインタなので、new(式) で渡します。
 func ExampleGenerateOptions() {
 	opts := gemini.GenerateOptions{
 		SystemPrompt:    "あなたは簡潔に答えるアシスタントです。",

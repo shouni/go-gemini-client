@@ -42,9 +42,9 @@ const (
 //
 // ポインタ型のフィールドは「未設定」と「明示的なゼロ値」を区別するためのものです。
 // 例えば Temperature は 0（決定的な出力）が意味を持つ値なので、nil のときだけ
-// SDK のデフォルトに委ねます。設定には Ptr ヘルパーが使えます。
+// SDK のデフォルトに委ねます。設定には new(式) を使います。
 //
-//	opts := gemini.GenerateOptions{Temperature: gemini.Ptr[float32](0)}
+//	opts := gemini.GenerateOptions{Temperature: new(float32(0))}
 type GenerateOptions struct {
 	SystemPrompt string
 
@@ -109,15 +109,6 @@ type GenerateOptions struct {
 	// 両方を設定した場合は ResponseJSONSchema を優先し、ResponseSchema は送信しません。
 	ResponseJSONSchema any
 }
-
-// Ptr は任意の値へのポインタを返すヘルパーです。
-//
-// Go 1.26 の new(式) がこれを不要にしました。新しいコードでは
-// new(float32(0.5)) のように直接書いてください。go:fix inline を付けてあるので、
-// 呼び出し側で go fix を走らせれば自動で置き換わります。互換のために残しています。
-//
-//go:fix inline
-func Ptr[T any](v T) *T { return new(v) }
 
 // Response は生成結果のラッパーです。
 type Response struct {
