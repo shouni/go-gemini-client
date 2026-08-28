@@ -86,60 +86,62 @@ func isNotFoundAPIError(err error) bool {
 
 // waitForFileActive は指定されたファイルが利用可能になるまでポーリングします。
 //
+// 制限時間（FilePollingTimeout）は待機**全体**に掛けます。ポーリングの合間だけで
+// 見張ると、ステータス確認の 1 回が応答を返さないまま留まったときに時間切れの判定へ
+// 到達できません（genai の既定 HTTP クライアントにタイムアウトはありません）。
+//
 // ステータス確認1回ごとにはリトライを掛けず（checkFileState が noRetryHTTPOptions で
 // 打ち消します）、一時的な失敗はこのループが fileStateMaxPollErrors 回まで受け流します。
 // 確認の内部でバックオフを効かせるとポーリング間隔とタイムアウトの意味が
 // 失われるためです（PollVideo・veo.Client と同じ方針）。
 func (c *Client) waitForFileActive(ctx context.Context, fileName string) (string, error) {
-	consecutiveErrors := 0
-
-	// poll は1回のステータス確認を行い、待機を終えるべきかを返します。
-	poll := func() (uri string, finished bool, err error) {
-		uri, done, err := c.checkFileState(ctx, fileName)
-		if done {
-			return uri, true, err
-		}
-		if err == nil {
-			consecutiveErrors = 0
-			return "", false, nil
-		}
-		// 呼び出し元のキャンセルは「一時的な失敗」ではないため即座に返す。
-		if ctx.Err() != nil {
-			return "", true, fmt.Errorf("ファイル %q の待機中にコンテキストがキャンセルされました: %w", fileName, ctx.Err())
-		}
-		consecutiveErrors++
-		if consecutiveErrors >= fileStateMaxPollErrors {
-			return "", true, fmt.Errorf("ファイル %q のステータス確認が %d 回連続で失敗しました: %w", fileName, consecutiveErrors, err)
-		}
-		c.log().WarnContext(ctx, "ファイルステータスの確認に失敗しました。再確認します",
-			"name", fileName, "consecutive_errors", consecutiveErrors, "error", err)
-		return "", false, nil
-	}
-
-	if uri, finished, err := poll(); finished {
-		return uri, err
-	}
+	waitCtx, cancel := context.WithTimeout(ctx, c.filePollingTimeout)
+	defer cancel()
 
 	ticker := time.NewTicker(c.filePollingInterval)
 	defer ticker.Stop()
 
-	timeout := time.NewTimer(c.filePollingTimeout)
-	defer timeout.Stop()
-
+	consecutiveErrors := 0
 	for {
-		select {
-		case <-ctx.Done():
-			return "", fmt.Errorf("ファイル %q の待機中にコンテキストがキャンセルされました: %w", fileName, ctx.Err())
+		uri, done, err := c.checkFileState(waitCtx, fileName)
+		switch {
+		case done:
+			return uri, err
 
-		case <-timeout.C:
-			return "", fmt.Errorf("ファイル %q の処理が制限時間（%v）内に完了しませんでした", fileName, c.filePollingTimeout)
+		case err != nil && waitCtx.Err() != nil:
+			// 待ち時間の上限に達したことによる失敗は「一時的な失敗」ではない。
+			return "", c.fileWaitDeadlineError(ctx, fileName, waitCtx.Err())
 
-		case <-ticker.C:
-			if uri, finished, err := poll(); finished {
-				return uri, err
+		case err != nil:
+			consecutiveErrors++
+			if consecutiveErrors >= fileStateMaxPollErrors {
+				return "", fmt.Errorf("ファイル %q のステータス確認が %d 回連続で失敗しました: %w", fileName, consecutiveErrors, err)
 			}
+			c.log().WarnContext(ctx, "ファイルステータスの確認に失敗しました。再確認します",
+				"name", fileName, "consecutive_errors", consecutiveErrors, "error", err)
+
+		default:
+			consecutiveErrors = 0
+		}
+
+		select {
+		case <-waitCtx.Done():
+			return "", c.fileWaitDeadlineError(ctx, fileName, waitCtx.Err())
+		case <-ticker.C:
 		}
 	}
+}
+
+// fileWaitDeadlineError は、Active 化待ちを打ち切った理由をエラーに整えます。
+// 呼び出し側の context が終了した場合と、このクライアントの制限時間に達した場合とでは
+// 対処が異なる（前者は上位のキャンセル、後者はサーバー側の処理が長すぎる）ため、
+// 区別できるようにしています。
+func (c *Client) fileWaitDeadlineError(ctx context.Context, fileName string, waitErr error) error {
+	if ctx.Err() != nil {
+		return fmt.Errorf("ファイル %q の待機中にコンテキストがキャンセルされました: %w", fileName, ctx.Err())
+	}
+	return fmt.Errorf("ファイル %q の処理が制限時間（%v）内に完了しませんでした: %w",
+		fileName, c.filePollingTimeout, waitErr)
 }
 
 func (c *Client) checkFileState(ctx context.Context, fileName string) (uri string, done bool, err error) {

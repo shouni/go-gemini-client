@@ -24,8 +24,11 @@ type fakeFileClient struct {
 	getFiles   []*genai.File
 	getErr     error
 	// getResults は呼び出し順に返す結果です。getFiles / getErr より優先されます。
-	getResults  []fakeGetResult
-	getCalls    int
+	getResults []fakeGetResult
+	getCalls   int
+	// getBlocks は、ステータス確認が応答を返さない状況を再現します。
+	// context が終わるまで戻らないため、待機側の制限時間だけが打ち切り手段になります。
+	getBlocks   bool
 	deleteErr   error
 	deleteCalls int
 	// deleteSignal は非同期削除（asyncDelete）の完了をテストへ通知するためのチャネルです。
@@ -44,8 +47,12 @@ func (f *fakeFileClient) Upload(_ context.Context, _ io.Reader, _ *genai.UploadF
 	return &genai.File{Name: "files/test"}, nil
 }
 
-func (f *fakeFileClient) Get(_ context.Context, name string, _ *genai.GetFileConfig) (*genai.File, error) {
+func (f *fakeFileClient) Get(ctx context.Context, name string, _ *genai.GetFileConfig) (*genai.File, error) {
 	f.getCalls++
+	if f.getBlocks {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
 	if len(f.getResults) > 0 {
 		idx := f.getCalls - 1
 		if idx >= len(f.getResults) {
@@ -136,29 +143,60 @@ func TestWaitForFileActive_ImmediateActive(t *testing.T) {
 }
 
 func TestWaitForFileActive_PollsUntilActive(t *testing.T) {
-	ctx := context.Background()
-	fake := &fakeFileClient{
-		getFiles: []*genai.File{
-			{Name: "test-file", State: genai.FileStateProcessing},
-			{Name: "test-file", URI: "https://example.com/file", State: genai.FileStateActive},
-		},
-	}
-	client := &Client{
-		fileClient:          fake,
-		filePollingInterval: time.Millisecond,
-		filePollingTimeout:  time.Second,
-	}
+	// ポーリング間隔はバブル内の仮想時計で経過させます。実時間は消費しません。
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		fake := &fakeFileClient{
+			getFiles: []*genai.File{
+				{Name: "test-file", State: genai.FileStateProcessing},
+				{Name: "test-file", URI: "https://example.com/file", State: genai.FileStateActive},
+			},
+		}
+		client := &Client{
+			fileClient:          fake,
+			filePollingInterval: 2 * time.Second,
+			filePollingTimeout:  time.Minute,
+		}
 
-	uri, err := client.waitForFileActive(ctx, "test-file")
-	if err != nil {
-		t.Fatalf("waitForFileActive() unexpected error = %v", err)
-	}
-	if uri != "https://example.com/file" {
-		t.Fatalf("uri = %q, want https://example.com/file", uri)
-	}
-	if fake.getCalls != 2 {
-		t.Fatalf("Get calls = %d, want 2", fake.getCalls)
-	}
+		uri, err := client.waitForFileActive(ctx, "test-file")
+		if err != nil {
+			t.Fatalf("waitForFileActive() unexpected error = %v", err)
+		}
+		if uri != "https://example.com/file" {
+			t.Fatalf("uri = %q, want https://example.com/file", uri)
+		}
+		if fake.getCalls != 2 {
+			t.Fatalf("Get calls = %d, want 2", fake.getCalls)
+		}
+	})
+}
+
+// TestWaitForFileActive_TimeoutBoundsInFlightCheck は、応答を返さないステータス確認が
+// 制限時間で打ち切られることを検証します。
+//
+// **制限時間をポーリングの合間でしか見張らない実装では、この待機は終わりません。**
+// 確認の中で止まっている間は時間切れの判定へ到達できず、genai の既定 HTTP クライアントにも
+// タイムアウトが無いためです。
+func TestWaitForFileActive_TimeoutBoundsInFlightCheck(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		fake := &fakeFileClient{getBlocks: true}
+		client := &Client{
+			fileClient:          fake,
+			filePollingInterval: 2 * time.Second,
+			filePollingTimeout:  10 * time.Second,
+		}
+
+		_, err := client.waitForFileActive(context.Background(), "test-file")
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("waitForFileActive() error = %v, want a deadline error", err)
+		}
+		if !strings.Contains(err.Error(), "制限時間") {
+			t.Errorf("エラーが時間切れであることを示していません: %v", err)
+		}
+		if fake.getCalls != 1 {
+			t.Errorf("Get calls = %d, want 1 (確認は 1 回のまま打ち切られる)", fake.getCalls)
+		}
+	})
 }
 
 // --- UploadFile のオーケストレーションテスト ---
@@ -216,70 +254,74 @@ func TestUploadFile_UploadError(t *testing.T) {
 }
 
 func TestUploadFile_WaitFailsTriggersCleanup(t *testing.T) {
-	ctx := context.Background()
-	fake := &fakeFileClient{
-		uploadFile:   &genai.File{Name: "files/uploaded"},
-		getErr:       errors.New("status check failed"),
-		deleteSignal: make(chan struct{}, 1),
-	}
-	// ステータス確認は fileStateMaxPollErrors 回まで許容されるため、
-	// 連続失敗の上限に素早く到達するよう間隔を短くする。
-	client := &Client{
-		fileClient:          fake,
-		filePollingInterval: time.Millisecond,
-		filePollingTimeout:  time.Second,
-	}
+	// 連続失敗の上限に達するまでのポーリングも、クリーンアップの完了待ちも
+	// バブル内の仮想時計で進みます。実時間は消費しません。
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		fake := &fakeFileClient{
+			uploadFile:   &genai.File{Name: "files/uploaded"},
+			getErr:       errors.New("status check failed"),
+			deleteSignal: make(chan struct{}, 1),
+		}
+		client := &Client{
+			fileClient:          fake,
+			filePollingInterval: 2 * time.Second,
+			filePollingTimeout:  time.Minute,
+		}
 
-	_, err := client.UploadFile(ctx, strings.NewReader("data"), "text/plain", "display")
-	if err == nil {
-		t.Fatal("Active 化失敗時にエラーが返されませんでした")
-	}
-	if !strings.Contains(err.Error(), "連続で失敗") {
-		t.Fatalf("連続失敗の打ち切りエラーを期待しましたが: %v", err)
-	}
-	if fake.getCalls != fileStateMaxPollErrors {
-		t.Fatalf("Get calls = %d, want %d (許容回数まで再確認する)", fake.getCalls, fileStateMaxPollErrors)
-	}
+		_, err := client.UploadFile(ctx, strings.NewReader("data"), "text/plain", "display")
+		if err == nil {
+			t.Fatal("Active 化失敗時にエラーが返されませんでした")
+		}
+		if !strings.Contains(err.Error(), "連続で失敗") {
+			t.Fatalf("連続失敗の打ち切りエラーを期待しましたが: %v", err)
+		}
+		if fake.getCalls != fileStateMaxPollErrors {
+			t.Fatalf("Get calls = %d, want %d (許容回数まで再確認する)", fake.getCalls, fileStateMaxPollErrors)
+		}
 
-	// asyncDelete はバックグラウンドで実行されるため、削除の完了を待つ。
-	select {
-	case <-fake.deleteSignal:
-	case <-time.After(2 * time.Second):
-		t.Fatal("asyncDelete によるクリーンアップが実行されませんでした")
-	}
-	if fake.deleteCalls != 1 {
-		t.Fatalf("delete calls = %d, want 1 (待機失敗時はクリーンアップが1回発火する)", fake.deleteCalls)
-	}
+		// asyncDelete はバックグラウンドで実行されるため、削除の完了を待つ。
+		select {
+		case <-fake.deleteSignal:
+		case <-time.After(AsyncCleanupTimeout):
+			t.Fatal("asyncDelete によるクリーンアップが実行されませんでした")
+		}
+		if fake.deleteCalls != 1 {
+			t.Fatalf("delete calls = %d, want 1 (待機失敗時はクリーンアップが1回発火する)", fake.deleteCalls)
+		}
+	})
 }
 
 // TestWaitForFileActive_ToleratesTransientErrors は、一過性のステータス確認失敗が
 // 待機全体を放棄しないことを検証します。以前は1回の失敗で 60 秒の待機予算ごと
 // 中断していました。
 func TestWaitForFileActive_ToleratesTransientErrors(t *testing.T) {
-	ctx := context.Background()
-	fake := &fakeFileClient{
-		getResults: []fakeGetResult{
-			{err: errors.New("blip 1")},
-			{err: errors.New("blip 2")},
-			{file: &genai.File{Name: "test-file", URI: "https://example.com/file", State: genai.FileStateActive}},
-		},
-	}
-	client := &Client{
-		fileClient:          fake,
-		filePollingInterval: time.Millisecond,
-		filePollingTimeout:  time.Second,
-	}
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		fake := &fakeFileClient{
+			getResults: []fakeGetResult{
+				{err: errors.New("blip 1")},
+				{err: errors.New("blip 2")},
+				{file: &genai.File{Name: "test-file", URI: "https://example.com/file", State: genai.FileStateActive}},
+			},
+		}
+		client := &Client{
+			fileClient:          fake,
+			filePollingInterval: 2 * time.Second,
+			filePollingTimeout:  time.Minute,
+		}
 
-	uri, err := client.waitForFileActive(ctx, "test-file")
-	if err != nil {
-		t.Fatalf("一過性エラーの後に成功するはずですが: %v", err)
-	}
-	if uri != "https://example.com/file" {
-		t.Fatalf("uri = %q", uri)
-	}
-	if fake.getCalls != 3 {
-		t.Fatalf("Get calls = %d, want 3", fake.getCalls)
-	}
+		uri, err := client.waitForFileActive(ctx, "test-file")
+		if err != nil {
+			t.Fatalf("一過性エラーの後に成功するはずですが: %v", err)
+		}
+		if uri != "https://example.com/file" {
+			t.Fatalf("uri = %q", uri)
+		}
+		if fake.getCalls != 3 {
+			t.Fatalf("Get calls = %d, want 3", fake.getCalls)
+		}
+	})
 }
 
 // --- checkFileState の失敗系ブランチのテスト ---

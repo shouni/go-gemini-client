@@ -246,6 +246,7 @@ resp, err := client.GenerateWithAttachments(ctx, "gemini-3.7-flash",
 - **Upload** はリトライされません。genai SDK が再開可能アップロードの経路にだけリトライを掛けないためで、再試行するかは呼び出し側の判断です
 - **Delete** はリトライ対象で、対象が既に存在しない場合（前回の削除が実は成功していた場合など）を成功として扱います
 - **Active 化待ちのステータス確認**にはリトライを掛けず、一時的な失敗をループ側で 5 回まで受け流します（ポーリングの内部でバックオフを効かせると間隔とタイムアウトの意味が失われるためです）
+- **`FilePollingTimeout` は待機全体に掛かります。** 実行中のステータス確認 1 回にも同じ期限が渡るため、応答が返らない確認で待ち続けることはありません（genai の既定 HTTP クライアントにタイムアウトは無いので、確認の合間だけ見張る実装では止まったままになります）
 - 失敗時のバックグラウンド削除の上限時間は `Config.AsyncCleanupTimeout`（既定 15 秒）で調整できます
 
 ---
@@ -262,7 +263,7 @@ resp, err := client.GenerateWithAttachments(ctx, "gemini-3.7-flash",
 | `InitialDelay` | リトライ開始時の待機時間 | `30s` |
 | `MaxDelay` | リトライ待機時間の上限 | `120s` |
 | `FilePollingInterval` | File API の状態確認間隔 | `2s` |
-| `FilePollingTimeout` | File API の状態確認タイムアウト | `60s` |
+| `FilePollingTimeout` | File API の Active 化待ち全体の上限時間。実行中の状態確認 1 回にも同じ期限が渡ります | `60s` |
 | `RequestTimeout` | 生成呼び出し 1 回（リトライ含む）の上限時間。File API とポーリングには適用されません | なし（無制限） |
 | `AsyncCleanupTimeout` | アップロード後処理失敗時のバックグラウンド削除の上限時間 | `15s` |
 | `Logger` | ライブラリ内部ログの出力先（`*slog.Logger`） | `slog.Default()` |
