@@ -1,14 +1,14 @@
 # ✨ Go Gemini Client
 
 [![CI](https://github.com/shouni/go-gemini-client/actions/workflows/ci.yml/badge.svg)](https://github.com/shouni/go-gemini-client/actions/workflows/ci.yml)
-[![Language](https://img.shields.io/badge/Language-Go-blue)](https://golang.org/)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/shouni/go-gemini-client)](https://golang.org/)
+[![Status](https://img.shields.io/badge/Status-Active-brightgreen)](#)
+[![Language](https://img.shields.io/badge/Language-Go-blue)](https://go.dev/)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/shouni/go-gemini-client)](https://go.dev/)
 [![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/shouni/go-gemini-client)](https://github.com/shouni/go-gemini-client/tags)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Reference](https://pkg.go.dev/badge/github.com/shouni/go-gemini-client.svg)](https://pkg.go.dev/github.com/shouni/go-gemini-client)
-[![Status](https://img.shields.io/badge/Status-Active-brightgreen)](#)
 
-## 🎯 概要
+## 🚀 概要 (About) - genai SDK を公開 API に出さない Gemini / Vertex クライアント
 
 **Go Gemini Client** は、**Google Gemini API / Vertex AI** 向けの Go ライブラリです。テキスト生成に加えて、GCS URI や File API を使ったマルチモーダル入力、画像・音声レスポンス、Lyria による音楽生成、Veo による動画生成を扱えます。
 
