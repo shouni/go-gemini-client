@@ -145,36 +145,17 @@ func main() {
 
 添付付きの生成・画像生成・音楽生成・動画生成の例は
 [pkg.go.dev](https://pkg.go.dev/github.com/shouni/go-gemini-client) にあります。
+**踏むと高くつく点も、それぞれの godoc に書いてあります** — アップロードがリトライされないこと
+（`Client.UploadFile`）、待機の上限時間が実行中のステータス確認 1 回にも掛かること
+（`Config.FilePollingTimeout`）、Active 化に失敗したときのバックグラウンド削除が投げっぱなしで
+完了を待てないこと（`Client.UploadFile`、上限時間は `Config.AsyncCleanupTimeout`）。
 
 ---
 
-## 📤 File API のアップロードと Active 化待ち
+## 📤 File API のアップロード後始末
 
-`UploadFile` はアップロード後、ファイルが `Active` になるまで自動で待機します。返るのは
-`UploadedFile{URI, Name}` で、`URI` は生成リクエストから参照する値、`Name` は `DeleteFile` に
-渡す識別子です。
-
-- **Upload はリトライされません。** genai SDK が再開可能アップロードの経路にだけリトライを
-  掛けないためで、再試行するかは呼び出し側の判断です。Delete はリトライ対象で、対象が既に
-  存在しない場合を成功として扱います
-- **待機の上限時間は待機全体だけでなく、実行中のステータス確認 1 回にも掛かります。** genai の
-  既定 HTTP クライアントにタイムアウトが無いため、確認の合間だけ見張る実装は応答の返らない
-  1 回で止まります（間隔・上限時間の設定と既定値は `Config` の godoc）
-- **削除の失敗は握りつぶさず記録してください。** サーバー側にファイルが残ります。Active 化に
-  失敗したときのバックグラウンド削除は投げっぱなしで、完了を待つ手段はありません
-  （上限時間は `Config.AsyncCleanupTimeout`、既定 15 秒）
-
-```go
-uploaded, err := client.UploadFile(ctx, f, "video/mp4", "movie.mp4")
-if err != nil {
-	return err
-}
-defer func() {
-	if err := client.DeleteFile(context.Background(), uploaded.Name); err != nil {
-		slog.Warn("failed to delete uploaded file", "name", uploaded.Name, "error", err)
-	}
-}()
-```
+**`DeleteFile` の失敗は握りつぶさず記録してください。** 黙って捨てるとサーバー側にファイルが
+残り続け、キット側からは気付けません。
 
 ---
 
