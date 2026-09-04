@@ -133,14 +133,13 @@ func TestLyriaAudioGeneratorSingleflightDeduplicatesConcurrentCalls(t *testing.T
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 		client := newBlockingGeminiClient()
-		client.partsResp = &gemini.Response{Audios: [][]byte{{1, 2, 3}}}
+		client.partsResp = audioResponse("audio/mpeg", []byte{1, 2, 3}, "sung lyrics")
 		seed := int64(7)
 
 		generator := &lyriaAudioGenerator{
 			aiClient:          client,
 			defaultLyriaModel: "lyria-3",
 			promptBuilder:     fixedAudioPromptBuilder{fullSong: "full prompt"},
-			converter:         noopPhoneticConverter{},
 		}
 
 		recipe := &MusicRecipe{
@@ -159,7 +158,7 @@ func TestLyriaAudioGeneratorSingleflightDeduplicatesConcurrentCalls(t *testing.T
 		}
 
 		const callers = 5
-		results := make([][]byte, callers)
+		results := make([]*Track, callers)
 		errs := make([]error, callers)
 		var wg sync.WaitGroup
 		wg.Add(callers)
@@ -184,9 +183,12 @@ func TestLyriaAudioGeneratorSingleflightDeduplicatesConcurrentCalls(t *testing.T
 			require.NoError(t, err)
 		}
 
-		// 修正後の cloneBytes の検証：バイナリが独立したメモリ領域であることを確認
-		results[0][0] = 9
-		assert.Equal(t, byte(1), results[1][0])
+		// Track.Clone の検証：共有結果ではなく、呼び出し元ごとに独立した音声バイト列であること。
+		require.NotSame(t, results[0], results[1])
+		results[0].Audio[0] = 9
+		assert.Equal(t, byte(1), results[1].Audio[0])
+		// 音声と一緒に返ったテキストも全員へ届く。
+		assert.Equal(t, "sung lyrics", results[1].SungLyrics)
 	})
 }
 
@@ -194,14 +196,13 @@ func TestLyriaAudioGeneratorSingleflightSeparatesDifferentImages(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 		client := newBlockingGeminiClient()
-		client.partsResp = &gemini.Response{Audios: [][]byte{{1, 2, 3}}}
+		client.partsResp = audioResponse("audio/mpeg", []byte{1, 2, 3}, "sung lyrics")
 		seed := int64(7)
 
 		generator := &lyriaAudioGenerator{
 			aiClient:          client,
 			defaultLyriaModel: "lyria-3",
 			promptBuilder:     fixedAudioPromptBuilder{fullSong: "full prompt"},
-			converter:         noopPhoneticConverter{},
 		}
 
 		recipe := &MusicRecipe{

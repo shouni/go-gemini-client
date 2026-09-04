@@ -62,11 +62,6 @@ func New(aiClient gemini.Generator, promptGen TextPromptGenerator, audioPromptBu
 		callguard.WithExecTimeout(opts.execTimeout),
 	)
 
-	converter := opts.readingConverter
-	if converter == nil {
-		converter = noopReadingConverter{}
-	}
-
 	textGenerator := &lyriaTextGenerator{
 		aiClient:     aiClient,
 		promptGen:    promptGen,
@@ -80,7 +75,6 @@ func New(aiClient gemini.Generator, promptGen TextPromptGenerator, audioPromptBu
 		audio: &lyriaAudioGenerator{
 			aiClient:          aiClient,
 			promptBuilder:     audioPromptBuilder,
-			converter:         converter,
 			guard:             audioGuard,
 			defaultLyriaModel: opts.lyriaModel,
 		},
@@ -98,6 +92,6 @@ func (w *Workflow) Compose(ctx context.Context, ai AIModels, lyrics *LyricsDraft
 }
 
 // GenerateAudio generates full-song audio from a music recipe.
-func (w *Workflow) GenerateAudio(ctx context.Context, recipe *MusicRecipe, images []ImagePayload) ([]byte, error) {
+func (w *Workflow) GenerateAudio(ctx context.Context, recipe *MusicRecipe, images []ImagePayload) (*Track, error) {
 	return w.audio.GenerateAudio(ctx, recipe, images)
 }

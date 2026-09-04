@@ -7,7 +7,6 @@ type options struct {
 	lyriaModel       string
 	rateInterval     time.Duration
 	textRateInterval time.Duration
-	readingConverter ReadingConverter
 	execTimeout      time.Duration
 }
 
@@ -25,13 +24,6 @@ func WithGeminiModel(value string) Option {
 func WithLyriaModel(value string) Option {
 	return func(opts *options) {
 		opts.lyriaModel = value
-	}
-}
-
-// WithReadingConverter injects a custom converter to format text into reader-friendly phonetics.
-func WithReadingConverter(converter ReadingConverter) Option {
-	return func(opts *options) {
-		opts.readingConverter = converter
 	}
 }
 
