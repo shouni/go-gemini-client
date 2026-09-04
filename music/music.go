@@ -22,6 +22,29 @@ type AIModels struct {
 	Seed        *int64 `json:"seed,omitempty"`
 	// Lang は歌詞・ボーカルの言語コードです（"ja" / "en"）。空は "ja" 扱いです。
 	Lang string `json:"lang,omitempty"`
+	// LyricReading は、日本語詞を音声生成へ渡すときの表記です（LyricReadingKana /
+	// LyricReadingOriginal）。空は LyricReadingKana 扱いです。
+	//
+	// レシピに載せるのは、プロンプトを組む側に届く情報がレシピだけだからです。ここに
+	// 無ければ曲ごとに切り替えられず、recipe.json に残らないので作り直しでも再現できません。
+	// 英語詞には効きません（読み変換を通らないため）。
+	LyricReading string `json:"lyric_reading,omitempty"`
+}
+
+// LyricReadingKana と LyricReadingOriginal は AIModels.LyricReading に指定できる値です。
+//
+// Kana は日本語詞を読み表記（カタカナ）へ変換してから渡します。漢字の読み違いを防ぐ既定です。
+// Original は書かれたままの表記で渡します。モデルが漢字を読めるなら、読み表記へ潰したときに
+// 失われる語の区切りと意味が発音の手がかりとして残ります。どちらが良いかはモデルで変わる
+// ので、同じレシピで両方を試せるよう値として持ちます。
+const (
+	LyricReadingKana     = "kana"
+	LyricReadingOriginal = "original"
+)
+
+// SendsLyricsAsWritten は、日本語詞を変換せず書かれたままの表記で渡すかを返します。
+func (m AIModels) SendsLyricsAsWritten() bool {
+	return m.LyricReading == LyricReadingOriginal
 }
 
 // LyricsDraft is the structured lyric output used by recipe composition.
