@@ -44,18 +44,17 @@ type MockPromptGen struct {
 	mock.Mock
 }
 
-type noopPhoneticConverter struct{}
-
-func (noopPhoneticConverter) ConvertToReading(input string) string {
-	return input
-}
-
-type fixedReadingConverter struct {
-	output string
-}
-
-func (c fixedReadingConverter) ConvertToReading(string) string {
-	return c.output
+// audioResponse は、Lyria の音声レスポンスをテスト用に組み立てます。
+//
+// Attachments と Audios を両方埋めるのは、gemini.responseFromGenAI がそう作るためです。
+// Audios だけのレスポンスは実際には返ってこないので、それを模したフェイクで通しても
+// MIME type を読む経路を検証できません。
+func audioResponse(mimeType string, data []byte, text string) *gemini.Response {
+	return &gemini.Response{
+		Text:        text,
+		Audios:      [][]byte{data},
+		Attachments: []gemini.Attachment{{MIMEType: mimeType, Data: data}},
+	}
 }
 
 type fixedAudioPromptBuilder struct {
@@ -240,12 +239,12 @@ func TestNewUsesAudioPromptBuilder(t *testing.T) {
 		"lyria-3",
 		"custom full prompt",
 		mock.Anything,
-		mock.Anything).Return(&gemini.Response{Audios: [][]byte{{1, 2, 3}}}, nil)
+		mock.Anything).Return(audioResponse("audio/mpeg", []byte{1, 2, 3}, ""), nil)
 
-	audio, err := workflow.GenerateAudio(ctx, &MusicRecipe{Title: "Song"}, nil)
+	track, err := workflow.GenerateAudio(ctx, &MusicRecipe{Title: "Song"}, nil)
 
 	assert.NoError(t, err)
-	assert.Equal(t, []byte{1, 2, 3}, audio)
+	assert.Equal(t, []byte{1, 2, 3}, track.Audio)
 	mAI.AssertExpectations(t)
 }
 
@@ -278,61 +277,6 @@ func TestNewUsesTextRateInterval(t *testing.T) {
 		// 仮想時計なので、待たされた時間は設定値ちょうどに一致する。
 		assert.Equal(t, 50*time.Millisecond, elapsed, "2回目の呼び出しはレート制限で待機するはずです")
 	})
-}
-
-func TestNewUsesReadingConverterOption(t *testing.T) {
-	ctx := context.Background()
-	mAI := new(MockGeminiClient)
-	mPrompt := new(MockPromptGen)
-
-	workflow, err := New(mAI, mPrompt, fixedAudioPromptBuilder{fullSong: "漢字 prompt"},
-		WithGeminiModel("gemini-flash"),
-		WithLyriaModel("lyria-3"),
-		WithRateInterval(0),
-		WithReadingConverter(fixedReadingConverter{output: "converted prompt"}),
-	)
-	assert.NoError(t, err)
-
-	mAI.On("GenerateWithAttachments",
-		mock.Anything,
-		"lyria-3",
-		"converted prompt",
-		mock.Anything,
-		mock.Anything).Return(&gemini.Response{Audios: [][]byte{{1, 2, 3}}}, nil)
-
-	audio, err := workflow.GenerateAudio(ctx, &MusicRecipe{Title: "Song"}, nil)
-
-	assert.NoError(t, err)
-	assert.Equal(t, []byte{1, 2, 3}, audio)
-	mAI.AssertExpectations(t)
-}
-
-func TestGenerateAudioSkipsReadingConverterForEnglish(t *testing.T) {
-	ctx := context.Background()
-	mAI := new(MockGeminiClient)
-	mPrompt := new(MockPromptGen)
-
-	workflow, err := New(mAI, mPrompt, fixedAudioPromptBuilder{fullSong: "english full prompt"},
-		WithGeminiModel("gemini-flash"),
-		WithLyriaModel("lyria-3"),
-		WithRateInterval(0),
-		WithReadingConverter(fixedReadingConverter{output: "converted prompt"}),
-	)
-	assert.NoError(t, err)
-
-	// Lang が "en" の場合、ReadingConverter を通さず元のプロンプトが使われること
-	mAI.On("GenerateWithAttachments",
-		mock.Anything,
-		"lyria-3",
-		"english full prompt",
-		mock.Anything,
-		mock.Anything).Return(&gemini.Response{Audios: [][]byte{{1, 2, 3}}}, nil)
-
-	audio, err := workflow.GenerateAudio(ctx, &MusicRecipe{Title: "Song", Lang: LangEnglish}, nil)
-
-	assert.NoError(t, err)
-	assert.Equal(t, []byte{1, 2, 3}, audio)
-	mAI.AssertExpectations(t)
 }
 
 // 構造体リテラルで limiter を省略（nil）した lyriaAudioGenerator でも
@@ -494,7 +438,6 @@ func TestGenerateAudioKeepsSeed(t *testing.T) {
 	generator := &lyriaAudioGenerator{
 		aiClient:          mAI,
 		promptBuilder:     fixedAudioPromptBuilder{fullSong: "full prompt"},
-		converter:         noopPhoneticConverter{},
 		defaultLyriaModel: "lyria-3",
 	}
 
@@ -503,11 +446,64 @@ func TestGenerateAudioKeepsSeed(t *testing.T) {
 		"lyria-3",
 		"full prompt",
 		mock.Anything,
-		audioGenerateOptionsWithSeed(t, &seed, "")).Return(&gemini.Response{Audios: [][]byte{{1, 2, 3}}}, nil)
+		audioGenerateOptionsWithSeed(t, &seed, "")).Return(audioResponse("audio/mpeg", []byte{1, 2, 3}, ""), nil)
 
-	audio, err := generator.GenerateAudio(ctx, &MusicRecipe{Title: "Song", Seed: &seed}, nil)
+	track, err := generator.GenerateAudio(ctx, &MusicRecipe{Title: "Song", Seed: &seed}, nil)
 
 	assert.NoError(t, err)
-	assert.Equal(t, []byte{1, 2, 3}, audio)
+	assert.Equal(t, []byte{1, 2, 3}, track.Audio)
+	mAI.AssertExpectations(t)
+}
+
+// TestGenerateAudioReturnsMIMETypeAndSungLyrics verifies the caller receives everything the
+// response carried, not just the audio bytes.
+//
+// MIME type とテキストは、返さなければ呼び出し側で作り直せません。MIME type はバイト列からの
+// 推測に頼ることになり、Lyria が歌った歌詞のテキストに至っては復元する手立てがありません。
+// 依頼した歌詞と突き合わせれば行の脱落や反復を機械的に検出できるので、捨てるには惜しい情報です。
+func TestGenerateAudioReturnsMIMETypeAndSungLyrics(t *testing.T) {
+	ctx := context.Background()
+	mAI := new(MockGeminiClient)
+
+	generator := &lyriaAudioGenerator{
+		aiClient:          mAI,
+		promptBuilder:     fixedAudioPromptBuilder{fullSong: "full prompt"},
+		defaultLyriaModel: "lyria-3",
+	}
+
+	mAI.On("GenerateWithAttachments", mock.Anything, "lyria-3", "full prompt", mock.Anything, mock.Anything).
+		Return(audioResponse("audio/mpeg", []byte{1, 2, 3}, "[Verse]\nsung line"), nil)
+
+	track, err := generator.GenerateAudio(ctx, &MusicRecipe{Title: "Song"}, nil)
+
+	assert.NoError(t, err)
+	assert.Equal(t, []byte{1, 2, 3}, track.Audio)
+	assert.Equal(t, "audio/mpeg", track.MIMEType)
+	assert.Equal(t, "[Verse]\nsung line", track.SungLyrics)
+	mAI.AssertExpectations(t)
+}
+
+// TestGenerateAudioRequiresAnAudioAttachment verifies a response that carries text but no audio is
+// an error rather than an empty track.
+//
+// 音声生成でテキストだけが返るのは、モデルが歌詞は書けたが音を出せなかった場合です。空の Track を
+// 返すと、呼び出し側は 0 バイトの音声を公開まで運んでしまいます。
+func TestGenerateAudioRequiresAnAudioAttachment(t *testing.T) {
+	ctx := context.Background()
+	mAI := new(MockGeminiClient)
+
+	generator := &lyriaAudioGenerator{
+		aiClient:          mAI,
+		promptBuilder:     fixedAudioPromptBuilder{fullSong: "full prompt"},
+		defaultLyriaModel: "lyria-3",
+	}
+
+	mAI.On("GenerateWithAttachments", mock.Anything, "lyria-3", "full prompt", mock.Anything, mock.Anything).
+		Return(&gemini.Response{Text: "lyrics but no audio"}, nil)
+
+	track, err := generator.GenerateAudio(ctx, &MusicRecipe{Title: "Song"}, nil)
+
+	assert.ErrorIs(t, err, ErrNoAudio)
+	assert.Nil(t, track)
 	mAI.AssertExpectations(t)
 }
