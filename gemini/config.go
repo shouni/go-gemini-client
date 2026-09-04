@@ -38,10 +38,20 @@ type Config struct {
 	// 二重実行になる場合に使います。
 	DisableRetry bool
 
-	InitialDelay        time.Duration
-	MaxDelay            time.Duration
+	InitialDelay time.Duration
+	MaxDelay     time.Duration
+
+	// FilePollingInterval は、File API のアップロード後に Active 状態を確認する間隔です。
+	// 0 は未設定で、PollingInterval を使います。1 回目の確認は間隔を待たずに行います。
 	FilePollingInterval time.Duration
-	FilePollingTimeout  time.Duration
+
+	// FilePollingTimeout は、ファイルが Active になるまでの待機の上限時間です。
+	// 0 は未設定で、PollingTimeout を使います。
+	//
+	// この期限は待機全体に掛かり、実行中のステータス確認 1 回にも同じ期限が渡ります。
+	// genai の既定の HTTP クライアントはそれ自体にタイムアウトを持たないため、確認と
+	// 確認の合間だけ期限を見張る実装では、応答の返らない 1 回でそのまま止まります。
+	FilePollingTimeout time.Duration
 
 	// RequestTimeout は、生成呼び出し1回（リトライを含む）の上限時間です。
 	// 0 は無制限で、呼び出し側の context の期限にのみ従います。

@@ -36,6 +36,12 @@ type UploadedFile struct {
 // アップロードはリトライされません。genai が再開可能アップロードのループにだけ
 // リトライ設定を渡さないためで、失敗したときの再試行は呼び出し側の判断です。
 //
+// Active 化待ちのステータス確認には 1 回ごとのリトライを掛けず、一時的な失敗は
+// ループ側で受け流して次の間隔で確認し直します。連続して 5 回失敗した時点で待機を
+// 打ち切ります。1 回の一時的なエラーで待機全体の予算を捨てず、恒久的な障害では
+// タイムアウトまで待たないための値です。待機の間隔と上限時間は
+// Config.FilePollingInterval と Config.FilePollingTimeout です。
+//
 // バックグラウンド削除は投げっぱなしで、完了を待つ手段はありません。
 // 確実に削除したい場合は呼び出し側で DeleteFile を呼んでください。
 func (c *Client) UploadFile(ctx context.Context, r io.Reader, mimeType, displayName string) (UploadedFile, error) {

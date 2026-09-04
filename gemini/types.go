@@ -178,6 +178,8 @@ const (
 	SafetyBlockOnlyHigh SafetyThreshold = genai.HarmBlockThresholdBlockOnlyHigh
 	// SafetyOff は、安全フィルタ自体を無効にします。BlockNone との違いはバックエンドの
 	// 対応状況によるため、意図して使い分ける場合以外は SafetyBlockNone を選んでください。
+	// Vertex AI はこの値を受け付けません。ProjectID / LocationID で使う場合は
+	// SafetyBlockNone を指定してください。
 	SafetyOff SafetyThreshold = genai.HarmBlockThresholdOff
 )
 
