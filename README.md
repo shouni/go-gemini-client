@@ -1,24 +1,40 @@
 # ✨ Go Gemini Client
 
 [![CI](https://github.com/shouni/go-gemini-client/actions/workflows/ci.yml/badge.svg)](https://github.com/shouni/go-gemini-client/actions/workflows/ci.yml)
-[![Status](https://img.shields.io/badge/Status-Active-brightgreen)](#)
+[![Status](https://img.shields.io/badge/Status-Archived-lightgrey)](#)
 [![Language](https://img.shields.io/badge/Language-Go-blue)](https://go.dev/)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/shouni/go-gemini-client)](https://go.dev/)
 [![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/shouni/go-gemini-client)](https://github.com/shouni/go-gemini-client/tags)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Reference](https://pkg.go.dev/badge/github.com/shouni/go-gemini-client.svg)](https://pkg.go.dev/github.com/shouni/go-gemini-client)
 
+> [!IMPORTANT]
+> **このリポジトリはアーカイブされました。後継は [genai-kit](https://github.com/shouni/genai-kit) です。**
+>
+> 利用者はすべて genai-kit へ移行済みです。更新は行われません。
+> 以下の記述は凍結時点のものです。
+>
+> **移行のしかた**
+>
+> | このライブラリ | genai-kit |
+> | --- | --- |
+> | `gemini.NewClient` | `gemini.New` |
+> | `Generator.GenerateWithAttachments` | `Generator.Generate` |
+> | `lyria.TextPromptGenerator{GenerateLyrics, GenerateRecipe}` | `lyria.TextPromptBuilder{LyricsPrompt, RecipePrompt}` |
+> | `lyria.AudioPromptBuilder.BuildFullSong` | `AudioPromptBuilder.FullSongPrompt` |
+> | `gemini` / `lyria` / `music` / `veo` / `callguard` | 同名で存在 |
+>
+> **genai-kit に無いもの**（移植せずに落としたものです）: File API（`FileManager` /
+> `UploadedFile` / `Model`）、ストリーミング生成、トークン数の事前カウント、
+> `BackendInspector`、`GenerateWithParts` 系。いずれも利用者がいないことを確認して外しました。
+> バックエンドは Vertex AI が既定で、`Config.APIKey` は Gemini API 向けの暫定サポートです。
+
 ## 🚀 概要 (About) - genai SDK を公開 API に出さない Gemini / Vertex クライアント。保存先は決めません
 
 **Go Gemini Client** は、**Google Gemini API / Vertex AI** 向けの Go ライブラリです。テキスト生成、
 GCS URI や File API を使ったマルチモーダル入力、画像・音声レスポンス、Lyria による音楽生成、
 Veo による動画生成を扱います。生成物の保存先は決めず、参照画像の取得・再圧縮を伴う画像生成は
-[gemini-image-kit](https://github.com/shouni/gemini-image-kit) が担当します。
-
-Vertex AI だけで足りる系統は姉妹ライブラリの
-[genai-kit](https://github.com/shouni/genai-kit) が担当します。
-**使い分けの表は [genai-kit の README](https://github.com/shouni/genai-kit#-go-gemini-client-との使い分け)
-にあります**（両方に置くと必ず片方が古くなるため、後発の側に 1 つだけ置いています）。
+gemini-image-kit が担当していました。
 
 シグネチャ・フィールド・エラーの一覧は
 [pkg.go.dev](https://pkg.go.dev/github.com/shouni/go-gemini-client) にあります。ここに書くのは、
